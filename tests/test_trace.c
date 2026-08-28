@@ -291,6 +291,61 @@ static void test_dispersion_fringes(void) {
     check(spread > 0.01f, "red and blue no longer agree");
 }
 
+/* A polarizer pane facing the camera, axis at deg degrees. */
+static HoloRect pane(float z, float deg) {
+    return (HoloRect){
+        .corner = hv3(-3, -3, z), .edge_u = hv3(6, 0, 0),
+        .edge_v = hv3(0, 6, 0), .albedo = hv3(1, 1, 1),
+        .filter = HOLO_POLARIZER,
+        .filter_angle = deg * 3.14159265f / 180.0f,
+    };
+}
+
+static void test_polarizers_in_scene(void) {
+    printf("trace: the three-polarizer paradox, in a scene\n");
+    /* A white sky behind stacked polarizer panes. Two crossed: dark.
+       Slide a 45-degree one between them: an eighth of the sky returns.
+       This is the whole Mueller machine running inside the actual walk. */
+    HoloScene s = {
+        .rects = { pane(1.0f, 0), pane(0.0f, 90) },
+        .rect_count = 2,
+        .sun_dir = hv3(0, 1, 0),
+        .horizon = hv3(1, 1, 1), .zenith = hv3(1, 1, 1),
+    };
+    HoloRay r = { .origin = hv3(0.3f, 0.2f, 5), .dir = hv3(0, 0, -1) };
+    float crossed = holo_trace_lambda(&s, r, 0.55f);
+    check_close(crossed, 0.0f, "crossed panes: dark sky");
+
+    s.rects[2] = pane(0.5f, 45);
+    s.rect_count = 3;
+    float three = holo_trace_lambda(&s, r, 0.55f);
+    check_close(three, 0.125f, "a third pane brings back an eighth");
+}
+
+static void test_waveplate_colors(void) {
+    printf("trace: a waveplate between crossed polarizers writes color\n");
+    /* A full-wave plate (at the D line) at 45 degrees between crossed
+       polarizers: at 589nm it does nothing, so the crossed pair stays
+       dark -- but its retardance runs as 1/lambda, so blue light sees
+       more than a full wave and leaks through. One element, dark at one
+       wavelength and bright at another: interference color, from physics
+       the RGB pipeline cannot even express. */
+    HoloRect wp = pane(0.5f, 45);
+    wp.filter = HOLO_WAVEPLATE;
+    wp.retard = 2.0f * 3.14159265f;
+    HoloScene s = {
+        .rects = { pane(1.0f, 0), pane(0.0f, 90), wp },
+        .rect_count = 3,
+        .sun_dir = hv3(0, 1, 0),
+        .horizon = hv3(1, 1, 1), .zenith = hv3(1, 1, 1),
+    };
+    HoloRay r = { .origin = hv3(0.3f, 0.2f, 5), .dir = hv3(0, 0, -1) };
+    float at_d = holo_trace_lambda(&s, r, 0.5893f);
+    float at_blue = holo_trace_lambda(&s, r, 0.44f);
+    check_close(at_d, 0.0f, "the D line stays extinguished");
+    check(at_blue > 0.2f, "blue leaks through the same element");
+}
+
 int main(void) {
     test_camera();
     test_shading();
@@ -303,5 +358,7 @@ int main(void) {
     test_glass_sphere_energy();
     test_spectral_agrees_on_gray();
     test_dispersion_fringes();
+    test_polarizers_in_scene();
+    test_waveplate_colors();
     return report();
 }

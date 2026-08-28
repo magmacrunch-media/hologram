@@ -56,6 +56,18 @@ typedef struct {
     float  disperse;         /* Cauchy B in um^2; 0 = achromatic glass */
 } HoloSphere;
 
+/* A rect can also be an ideal optical filter instead of glass:
+   HOLO_POLARIZER passes the component along its axis (Malus does the
+   rest); HOLO_WAVEPLATE retards p against s about its axis by `retard`
+   radians at the sodium D line, scaling as 1/lambda the way a zero-order
+   plate does -- which is why a thick plate between crossed polarizers
+   shows interference colors in the spectral path. Filters ignore mirror /
+   transmit / ior; polarization physics exists in the spectral pipeline,
+   and the RGB path approximates a polarizer as a flat 50% absorber. */
+#define HOLO_FILTER_NONE      0
+#define HOLO_POLARIZER        1
+#define HOLO_WAVEPLATE        2
+
 typedef struct {
     HoloV3 corner;
     HoloV3 edge_u, edge_v;   /* lengths are the panel's size */
@@ -64,6 +76,9 @@ typedef struct {
     float  transmit;
     float  ior;
     float  disperse;
+    int    filter;           /* HOLO_FILTER_NONE / POLARIZER / WAVEPLATE */
+    float  filter_angle;     /* axis, radians from edge_u toward edge_v */
+    float  retard;           /* waveplate retardance at the D line, radians */
 } HoloRect;
 
 typedef struct {

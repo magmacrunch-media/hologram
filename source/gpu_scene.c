@@ -1,4 +1,5 @@
 /* See gpu_scene.h. */
+#include <math.h>
 #include "gpu_scene.h"
 
 /* Every vector field in the block is three floats with a scalar riding in
@@ -48,6 +49,18 @@ void holo_gpu_scene_fill(HoloGpuScene *gpu, const HoloScene *scene,
         gpu->rect_glass[i][0] = scene->rects[i].transmit;
         gpu->rect_glass[i][1] = scene->rects[i].ior;
         gpu->rect_glass[i][2] = scene->rects[i].disperse;
+        gpu->rect_glass[i][3] = scene->rects[i].retard;
+        gpu->rect_filter[i][0] = (float)scene->rects[i].filter;
+        /* The filter axis inside the pane, from the angle off edge_u; the
+           shader projects it onto each ray's transverse plane itself. */
+        HoloV3 axis = hv3_add(
+            hv3_scale(hv3_norm(scene->rects[i].edge_u),
+                      cosf(scene->rects[i].filter_angle)),
+            hv3_scale(hv3_norm(scene->rects[i].edge_v),
+                      sinf(scene->rects[i].filter_angle)));
+        gpu->rect_filter[i][1] = axis.x;
+        gpu->rect_filter[i][2] = axis.y;
+        gpu->rect_filter[i][3] = axis.z;
     }
 
     for (int i = 0; i < HOLO_WAVELENGTHS; i++) {

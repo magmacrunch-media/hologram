@@ -15,7 +15,7 @@ if not exist build mkdir build
 
 rem The pure modules: no sokol, no window, safe to link into tests and
 rem console tools alike.
-set PURE=source\linalg.c source\geometry.c source\camera.c source\cpu_trace.c source\gpu_scene.c source\spectrum.c source\timestep.c
+set PURE=source\linalg.c source\polar.c source\geometry.c source\camera.c source\cpu_trace.c source\gpu_scene.c source\spectrum.c source\timestep.c
 
 if "%1"=="test" goto :tests
 
@@ -34,6 +34,8 @@ cl /nologo /std:c11 /W3 /O2 /DSOKOL_D3D11 /DSOKOL_WIN32_FORCE_MAIN /Fobuild\ /Fe
     examples\m4_glass\main.c source\display.c source\oracle.c %PURE% || exit /b 1
 cl /nologo /std:c11 /W3 /O2 /DSOKOL_D3D11 /DSOKOL_WIN32_FORCE_MAIN /Fobuild\ /Febuild\m5_spectral.exe ^
     examples\m5_spectral\main.c source\display.c source\oracle.c %PURE% || exit /b 1
+cl /nologo /std:c11 /W3 /O2 /DSOKOL_D3D11 /DSOKOL_WIN32_FORCE_MAIN /Fobuild\ /Febuild\m6_polarization.exe ^
+    examples\m6_polarization\main.c source\display.c source\oracle.c %PURE% || exit /b 1
 exit /b 0
 
 :tests

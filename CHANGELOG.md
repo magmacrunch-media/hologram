@@ -66,6 +66,23 @@ later milestone builds on.
   glass refracting at n(lambda); the spectral and RGB pipelines agree to the
   float on neutral achromatic scenes, and part ways at the first dispersive
   surface -- which is the point.
+- **Polarization** — `source/polar.c`: every spectral ray carries a
+  detector-row Stokes accumulator and its transverse frame (all sources are
+  unpolarized, so a path needs only the first row of its Mueller product --
+  four floats, not sixteen). Interfaces rotate into their s/p or axis basis
+  by double angles from dot products and apply Mueller matrices built from
+  Fresnel amplitudes, TIR carrying its true phase retardance. Rects can be
+  ideal polarizers or waveplates (retardance scaling 1/lambda, so a thick
+  plate between crossed polarizers writes interference colors through the
+  spectral loop). Held by tests to Malus's law at five angles, the
+  three-polarizer paradox (0 crossed, exactly 1/8th with a 45-degree third),
+  Brewster's fully polarized reflection, energy conservation per
+  polarization, the quarter- and half-wave plates, and the 36.9-degree TIR
+  phase a Fresnel rhomb is cut to.
+- **sRGB display encoding** — the tracer works in linear radiance and now
+  encodes to sRGB at its one display boundary (shader output, mirrored in
+  the oracle's comparison), so dim physics -- an eighth of a wall through
+  three polarizers -- reads as the eye would see it.
 
 ### Examples
 
@@ -88,6 +105,11 @@ later milestone builds on.
   stripe: fringeless seen directly, gentle fringes through BK7, a real
   spectrum through the flint at five times the dispersion -- the same
   reason camera lenses pair the two glasses.
+- **m6_polarization** — two windows onto a bright wall: a crossed pair
+  with a 45-degree third polarizer glowing between them (the paradox that
+  buries the absorption metaphor), and the same crossed pair around a
+  full-wave plate glowing interference blue. Nothing painted; Mueller
+  matrices times twelve wavelengths.
 
 ### Repository
 

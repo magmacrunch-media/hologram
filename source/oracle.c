@@ -1,5 +1,6 @@
 /* See oracle.h. Talks to the display for the framebuffer size and pixels,
  * so it lives with the sokol-linked sources, not the pure ones. */
+#include <math.h>
 #include <stdlib.h>
 #include "../external/sokol/sokol_app.h"
 #include "display.h"
@@ -33,7 +34,10 @@ int holo_oracle_diff(const HoloScene *scene, const HoloCamera *cam,
         for (int c = 0; c < 3; c++) {
             float v = rgb[3 * i + c];
             v = v < 0 ? 0 : v > 1 ? 1 : v;
-            /* The same rounding the swapchain's UNORM store applies. */
+            /* The same sRGB encode the shader applies at its one display
+               boundary, then the same rounding the UNORM store applies. */
+            v = v <= 0.0031308f ? v * 12.92f
+                                : 1.055f * powf(v, 1.0f / 2.4f) - 0.055f;
             int want = (int)(v * 255.0f + 0.5f);
             int got = gpu[4 * i + c];
             int d = got > want ? got - want : want - got;

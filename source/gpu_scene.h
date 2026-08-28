@@ -33,7 +33,8 @@ typedef struct {
     float rect_edge_u[HOLO_MAX_RECTS][4];
     float rect_edge_v[HOLO_MAX_RECTS][4];
     float rect_albedo[HOLO_MAX_RECTS][4];
-    float rect_glass[HOLO_MAX_RECTS][4];            /* x transmit, y ior, z disperse */
+    float rect_glass[HOLO_MAX_RECTS][4];            /* x transmit, y ior, z disperse, w retard */
+    float rect_filter[HOLO_MAX_RECTS][4];           /* x mode, yzw axis in the pane */
 
     /* x = lambda in um, yzw = that sample's CIE-derived sRGB weight. The
        shader must not re-derive these: CPU and GPU folding the same floats
