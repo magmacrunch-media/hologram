@@ -52,7 +52,8 @@ typedef struct {
     HoloV3 albedo;
     float  mirror;
     float  transmit;
-    float  ior;              /* meaningful when transmit > 0 */
+    float  ior;              /* at the sodium D line; meaningful when transmit > 0 */
+    float  disperse;         /* Cauchy B in um^2; 0 = achromatic glass */
 } HoloSphere;
 
 typedef struct {
@@ -62,6 +63,7 @@ typedef struct {
     float  mirror;
     float  transmit;
     float  ior;
+    float  disperse;
 } HoloRect;
 
 typedef struct {
@@ -79,13 +81,29 @@ typedef struct {
     HoloV3 horizon, zenith;    /* the M0 sky */
 } HoloScene;
 
-/* The color a single ray sees, mirror bounces included. */
+/* The color a single ray sees, mirror bounces included. RGB light: glass
+   refracts at its D-line index, dispersion invisible. */
 HoloV3 holo_trace_ray(const HoloScene *scene, HoloRay ray);
+
+/* The intensity a single ray sees at one wavelength: albedos read through
+   holo_albedo_at, glass refracting at n(lambda). The walk, its caps and its
+   culls are the same as holo_trace_ray's -- one wavelength at a time is the
+   only difference. */
+float holo_trace_lambda(const HoloScene *scene, HoloRay ray, float lambda_um);
+
+/* The color a single ray sees spectrally: HOLO_WAVELENGTHS traces of
+   holo_trace_lambda, folded through the CIE weights. Where no dispersive
+   glass is struck this agrees with holo_trace_ray on neutral scenes; where
+   it is, wavelengths part ways and fringes are real. */
+HoloV3 holo_trace_ray_spectral(const HoloScene *scene, HoloRay ray);
 
 /* Render the whole frame into rgb (w*h*3 floats, rows top-down, linear
    0..1-ish -- tone mapping is the caller's problem, as it will be the
-   swapchain's on the GPU). */
+   swapchain's on the GPU). spectral != 0 renders through
+   holo_trace_ray_spectral. */
 void holo_trace_image(const HoloScene *scene, const HoloCamera *cam,
                       int w, int h, float *rgb);
+void holo_trace_image_spectral(const HoloScene *scene, const HoloCamera *cam,
+                               int w, int h, float *rgb);
 
 #endif

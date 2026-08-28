@@ -10,10 +10,11 @@ static void put3(float *dst, HoloV3 v) {
 }
 
 void holo_gpu_scene_fill(HoloGpuScene *gpu, const HoloScene *scene,
-                         const HoloCamera *cam) {
+                         const HoloCamera *cam, int spectral) {
     put3(gpu->cam_pos, cam->pos);
     gpu->tan_half_fov = cam->tan_half_fov;
     put3(gpu->cam_fwd, cam->forward);
+    gpu->spectral = spectral ? 1.0f : 0.0f;
     put3(gpu->cam_right, cam->right);
     put3(gpu->cam_up, cam->up);
 
@@ -36,6 +37,7 @@ void holo_gpu_scene_fill(HoloGpuScene *gpu, const HoloScene *scene,
         gpu->sph_albedo_mirror[i][3] = scene->spheres[i].mirror;
         gpu->sph_glass[i][0] = scene->spheres[i].transmit;
         gpu->sph_glass[i][1] = scene->spheres[i].ior;
+        gpu->sph_glass[i][2] = scene->spheres[i].disperse;
     }
     for (int i = 0; i < scene->rect_count; i++) {
         put3(gpu->rect_corner_mirror[i], scene->rects[i].corner);
@@ -45,5 +47,14 @@ void holo_gpu_scene_fill(HoloGpuScene *gpu, const HoloScene *scene,
         put3(gpu->rect_albedo[i], scene->rects[i].albedo);
         gpu->rect_glass[i][0] = scene->rects[i].transmit;
         gpu->rect_glass[i][1] = scene->rects[i].ior;
+        gpu->rect_glass[i][2] = scene->rects[i].disperse;
+    }
+
+    for (int i = 0; i < HOLO_WAVELENGTHS; i++) {
+        HoloV3 w = holo_spectral_weight(i);
+        gpu->spectral_lw[i][0] = holo_lambda(i);
+        gpu->spectral_lw[i][1] = w.x;
+        gpu->spectral_lw[i][2] = w.y;
+        gpu->spectral_lw[i][3] = w.z;
     }
 }

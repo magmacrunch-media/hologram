@@ -1,6 +1,7 @@
 /* See cpu_trace.h. */
 #include <math.h>
 #include "cpu_trace.h"
+#include "spectrum.h"
 
 /* Everything shading needs to know about the nearest surface: where it is,
    which way it faces, what it is made of, and whether its glass is a volume
@@ -10,6 +11,7 @@ typedef struct {
     float  mirror;
     float  transmit;
     float  ior;
+    float  disperse;
     int    volume;
 } HoloSurface;
 
@@ -27,6 +29,7 @@ static int nearest_hit(const HoloScene *scene, HoloRay ray, HoloHit *hit,
             surf->mirror = scene->spheres[i].mirror;
             surf->transmit = scene->spheres[i].transmit;
             surf->ior = scene->spheres[i].ior;
+            surf->disperse = scene->spheres[i].disperse;
             surf->volume = 1;
             found = 1;
         }
@@ -39,6 +42,7 @@ static int nearest_hit(const HoloScene *scene, HoloRay ray, HoloHit *hit,
             surf->mirror = scene->rects[i].mirror;
             surf->transmit = scene->rects[i].transmit;
             surf->ior = scene->rects[i].ior;
+            surf->disperse = scene->rects[i].disperse;
             surf->volume = 0;
             found = 1;
         }
@@ -55,6 +59,7 @@ static int nearest_hit(const HoloScene *scene, HoloRay ray, HoloHit *hit,
         surf->mirror = scene->floor_mirror;
         surf->transmit = 0.0f;
         surf->ior = 1.0f;
+        surf->disperse = 0.0f;
         surf->volume = 0;
         found = 1;
     }
@@ -202,6 +207,101 @@ HoloV3 holo_trace_ray(const HoloScene *scene, HoloRay primary) {
     return color;
 }
 
+float holo_trace_lambda(const HoloScene *scene, HoloRay primary,
+                        float lambda_um) {
+    /* The same walk as holo_trace_ray -- same caps, same push order, same
+       cull -- with a scalar throughput: one wavelength's worth of light.
+       Albedos are read at lambda, and glass refracts at n(lambda), which is
+       the entire point: two wavelengths handed the same primary ray part
+       ways at the first dispersive surface. */
+    PathRay stack[HOLO_STACK];
+    int sp = 0, processed = 0;
+    float intensity = 0.0f;
+
+    stack[sp++] = (PathRay){ .ray = primary, .tp = hv3(1, 0, 0) };
+
+    while (sp > 0 && processed < HOLO_MAX_RAYS) {
+        processed++;
+        PathRay p = stack[--sp];
+        float tp = p.tp.x;   /* scalar throughput rides in x */
+
+        HoloHit hit;
+        HoloSurface surf;
+        if (!nearest_hit(scene, p.ray, &hit, &surf)) {
+            intensity += tp * holo_albedo_at(sky(scene, p.ray.dir), lambda_um);
+            continue;
+        }
+
+        float matte = 1.0f - surf.mirror - surf.transmit;
+        if (matte > 0.0f) {
+            float diffuse = hv3_dot(hit.normal, scene->sun_dir);
+            if (diffuse < 0.0f) {
+                diffuse = 0.0f;
+            }
+            if (diffuse > 0.0f && sun_blocked(scene, hit.point)) {
+                diffuse = 0.0f;
+            }
+            float lambert = holo_albedo_at(surf.albedo, lambda_um)
+                          * (HOLO_AMBIENT + (1.0f - HOLO_AMBIENT) * diffuse);
+            intensity += tp * lambert * matte;
+        }
+
+        if (p.depth >= HOLO_MAX_BOUNCE) {
+            continue;
+        }
+
+        float reflect_tint = holo_albedo_at(surf.albedo, lambda_um) * surf.mirror;
+        if (surf.transmit > 0.0f) {
+            float n_glass = holo_ior_at(surf.ior, surf.disperse, lambda_um);
+            float cos_i = -hv3_dot(hit.normal, p.ray.dir);
+            float n1 = p.inside ? n_glass : 1.0f;
+            float n2 = p.inside ? 1.0f : n_glass;
+            float rs, rp;
+            holo_fresnel(cos_i, n1, n2, &rs, &rp);
+            float r = 0.5f * (rs + rp);
+
+            if (r < 1.0f) {
+                float ttp = tp * holo_albedo_at(surf.albedo, lambda_um)
+                          * surf.transmit * (1.0f - r);
+                if (ttp > HOLO_MIN_TP && sp < HOLO_STACK) {
+                    PathRay t = { .tp = hv3(ttp, 0, 0), .depth = p.depth + 1 };
+                    if (surf.volume) {
+                        hv3_refract(p.ray.dir, hit.normal, n1 / n2, &t.ray.dir);
+                        t.ray.origin = hit.point;
+                        t.inside = !p.inside;
+                    } else {
+                        t.ray = (HoloRay){ .origin = hit.point, .dir = p.ray.dir };
+                        t.inside = p.inside;
+                    }
+                    stack[sp++] = t;
+                }
+            }
+            reflect_tint += surf.transmit * r;
+        }
+
+        float rtp = tp * reflect_tint;
+        if (rtp > HOLO_MIN_TP && sp < HOLO_STACK) {
+            stack[sp++] = (PathRay){
+                .ray = { .origin = hit.point,
+                         .dir = hv3_reflect(p.ray.dir, hit.normal) },
+                .tp = hv3(rtp, 0, 0),
+                .inside = p.inside,
+                .depth = p.depth + 1,
+            };
+        }
+    }
+    return intensity;
+}
+
+HoloV3 holo_trace_ray_spectral(const HoloScene *scene, HoloRay ray) {
+    HoloV3 color = hv3(0, 0, 0);
+    for (int i = 0; i < HOLO_WAVELENGTHS; i++) {
+        float in = holo_trace_lambda(scene, ray, holo_lambda(i));
+        color = hv3_add(color, hv3_scale(holo_spectral_weight(i), in));
+    }
+    return color;
+}
+
 void holo_trace_image(const HoloScene *scene, const HoloCamera *cam,
                       int w, int h, float *rgb) {
     for (int y = 0; y < h; y++) {
@@ -209,6 +309,30 @@ void holo_trace_image(const HoloScene *scene, const HoloCamera *cam,
             HoloRay ray = holo_camera_ray(cam, (x + 0.5f) / (float)w,
                                                (y + 0.5f) / (float)h);
             HoloV3 c = holo_trace_ray(scene, ray);
+            float *px = rgb + 3 * (y * w + x);
+            px[0] = c.x;
+            px[1] = c.y;
+            px[2] = c.z;
+        }
+    }
+}
+
+void holo_trace_image_spectral(const HoloScene *scene, const HoloCamera *cam,
+                               int w, int h, float *rgb) {
+    /* The weights do not depend on the pixel; fetch them once. */
+    HoloV3 weights[HOLO_WAVELENGTHS];
+    for (int i = 0; i < HOLO_WAVELENGTHS; i++) {
+        weights[i] = holo_spectral_weight(i);
+    }
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            HoloRay ray = holo_camera_ray(cam, (x + 0.5f) / (float)w,
+                                               (y + 0.5f) / (float)h);
+            HoloV3 c = hv3(0, 0, 0);
+            for (int i = 0; i < HOLO_WAVELENGTHS; i++) {
+                float in = holo_trace_lambda(scene, ray, holo_lambda(i));
+                c = hv3_add(c, hv3_scale(weights[i], in));
+            }
             float *px = rgb + 3 * (y * w + x);
             px[0] = c.x;
             px[1] = c.y;

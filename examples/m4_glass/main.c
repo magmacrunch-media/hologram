@@ -32,7 +32,7 @@ static void after_frame(void) {
             CAM_POS, CAM_AT, hv3(0, 1, 0), 55.0f,
             (float)sapp_width() / (float)sapp_height());
         HoloOracleStats st;
-        int ok = holo_oracle_diff(&scene, &cam, &st);
+        int ok = holo_oracle_diff(&scene, &cam, 0, &st);
         printf("DIFF %s: %dx%d, mean err %.4f/255, max %d/255, "
                "%.3f%% pixels off by >8\n",
                ok ? "OK" : "FAIL", st.width, st.height, st.mean, st.max,
@@ -82,7 +82,7 @@ sapp_desc sokol_main(int argc, char *argv[]) {
     };
     HoloCamera cam = holo_camera_make(CAM_POS, CAM_AT, hv3(0, 1, 0),
                                       55.0f, 1.0f);
-    holo_gpu_scene_fill(&gpu, &scene, &cam);
+    holo_gpu_scene_fill(&gpu, &scene, &cam, 0);
 
     FILE *f = fopen("shaders\\trace.hlsl", "rb");
     if (!f) {

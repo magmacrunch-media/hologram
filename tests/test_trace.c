@@ -242,6 +242,55 @@ static void test_glass_sphere_energy(void) {
     check_close(c.x, 0.998464f, "the branch weights sum");
 }
 
+static void test_spectral_agrees_on_gray(void) {
+    printf("trace: spectral and RGB agree wherever nothing disperses\n");
+    /* A neutral scene traced spectrally must land on the RGB answer
+       exactly: gray albedos read the same at every wavelength, achromatic
+       glass bends every wavelength alike, and the weights sum to one. Any
+       daylight between the two pipelines here is a bug, not physics. */
+    HoloScene s = {
+        .spheres = { { .center = hv3(0, 1, 0), .radius = 1,
+                       .albedo = hv3(0.7f, 0.7f, 0.7f), .transmit = 1.0f,
+                       .ior = 1.5f } },
+        .sphere_count = 1,
+        .has_floor = 1,
+        .floor_a = hv3(0.8f, 0.8f, 0.8f), .floor_b = hv3(0.3f, 0.3f, 0.3f),
+        .sun_dir = hv3(0, 1, 0),
+        .horizon = hv3(0.9f, 0.9f, 0.9f), .zenith = hv3(0.2f, 0.2f, 0.2f),
+    };
+    HoloRay r = { .origin = hv3(0.4f, 1.6f, 5),
+                  .dir = hv3_norm(hv3(-0.1f, -0.2f, -1)) };
+    HoloV3 rgb = holo_trace_ray(&s, r);
+    HoloV3 spec = holo_trace_ray_spectral(&s, r);
+    check_close(spec.x, rgb.x, "spectral r matches");
+    check_close(spec.y, rgb.y, "spectral g matches");
+    check_close(spec.z, rgb.z, "spectral b matches");
+}
+
+static void test_dispersion_fringes(void) {
+    printf("trace: dispersive glass tears white light apart\n");
+    /* Through a strongly dispersive pane... no -- panes do not bend, so
+       dispersion must come from a volume. A ray through a flint ball
+       off-center: the RGB trace calls the result neutral (gray world,
+       single ior), but the spectral trace bends blue and red onto
+       different exit paths toward different-brightness sky, so the pixel
+       must come out colored. Fringing is not an artifact: it is the test. */
+    HoloScene s = {
+        .spheres = { { .center = hv3(0, 0, 0), .radius = 1,
+                       .albedo = hv3(1, 1, 1), .transmit = 1.0f,
+                       .ior = 1.62f, .disperse = 0.03f } },
+        .sphere_count = 1,
+        .sun_dir = hv3(0, 1, 0),
+        /* A sky that changes fast with direction, so a small angular split
+           becomes a big intensity split. */
+        .horizon = hv3(1, 1, 1), .zenith = hv3(0, 0, 0),
+    };
+    HoloRay r = { .origin = hv3(0.55f, 3, 0.0f), .dir = hv3(0, -1, 0) };
+    HoloV3 c = holo_trace_ray_spectral(&s, r);
+    float spread = fabsf(c.x - c.z);
+    check(spread > 0.01f, "red and blue no longer agree");
+}
+
 int main(void) {
     test_camera();
     test_shading();
@@ -252,5 +301,7 @@ int main(void) {
     test_polished_floor();
     test_glass_pane();
     test_glass_sphere_energy();
+    test_spectral_agrees_on_gray();
+    test_dispersion_fringes();
     return report();
 }

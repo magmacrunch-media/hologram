@@ -22,8 +22,9 @@ typedef struct {
 
 /* Returns 1 when the GPU frame matches the oracle within the bars above,
    0 when it does not or the backend cannot read pixels back. The camera
-   must be built with the real framebuffer aspect. */
+   must be built with the real framebuffer aspect, and spectral must say
+   which path the GPU rendered, so the CPU renders the same one. */
 int holo_oracle_diff(const HoloScene *scene, const HoloCamera *cam,
-                     HoloOracleStats *stats);
+                     int spectral, HoloOracleStats *stats);
 
 #endif

@@ -11,12 +11,13 @@
 
 #include "cpu_trace.h"
 #include "display.h"
+#include "spectrum.h"
 
 typedef struct {
     HoloDisplayUniforms display;           /* filled by display.c each frame */
 
     float cam_pos[3];   float tan_half_fov;
-    float cam_fwd[3];   float pad_a;
+    float cam_fwd[3];   float spectral;    /* 1: trace per wavelength */
     float cam_right[3]; float sphere_count;
     float cam_up[3];    float has_floor;
     float sun_dir[3];   float floor_y;
@@ -27,18 +28,24 @@ typedef struct {
 
     float sph_center_radius[HOLO_MAX_SPHERES][4];   /* xyz center, w radius */
     float sph_albedo_mirror[HOLO_MAX_SPHERES][4];   /* xyz albedo, w mirror */
-    float sph_glass[HOLO_MAX_SPHERES][4];           /* x transmit, y ior */
+    float sph_glass[HOLO_MAX_SPHERES][4];           /* x transmit, y ior, z disperse */
     float rect_corner_mirror[HOLO_MAX_RECTS][4];    /* xyz corner, w mirror */
     float rect_edge_u[HOLO_MAX_RECTS][4];
     float rect_edge_v[HOLO_MAX_RECTS][4];
     float rect_albedo[HOLO_MAX_RECTS][4];
-    float rect_glass[HOLO_MAX_RECTS][4];            /* x transmit, y ior */
+    float rect_glass[HOLO_MAX_RECTS][4];            /* x transmit, y ior, z disperse */
+
+    /* x = lambda in um, yzw = that sample's CIE-derived sRGB weight. The
+       shader must not re-derive these: CPU and GPU folding the same floats
+       is part of what the oracle diff certifies. */
+    float spectral_lw[HOLO_WAVELENGTHS][4];
 } HoloGpuScene;
 
 /* Write scene and camera into the block. The camera's aspect is NOT carried:
    the shader derives it from the framebuffer size in its uniforms, so the
-   image stays right when the window is resized. */
+   image stays right when the window is resized. spectral chooses the
+   shader's path: 0 traces RGB, 1 traces per wavelength. */
 void holo_gpu_scene_fill(HoloGpuScene *gpu, const HoloScene *scene,
-                         const HoloCamera *cam);
+                         const HoloCamera *cam, int spectral);
 
 #endif

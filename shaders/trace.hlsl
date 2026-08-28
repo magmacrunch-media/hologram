@@ -11,7 +11,7 @@
 cbuffer params : register(b0) {
     float2 res; float time; float pad0;          /* HoloDisplayUniforms */
     float3 cam_pos;   float tan_half_fov;
-    float3 cam_fwd;   float pad_a;
+    float3 cam_fwd;   float spectral;
     float3 cam_right; float sphere_count;
     float3 cam_up;    float has_floor;
     float3 sun_dir;   float floor_y;
@@ -27,6 +27,7 @@ cbuffer params : register(b0) {
     float4 rect_edge_v[8];
     float4 rect_albedo[8];
     float4 rect_glass[8];
+    float4 spectral_lw[12];   /* x lambda um, yzw CIE-derived sRGB weight */
 };
 
 static const float T_MIN = 1e-3;      /* HOLO_T_MIN */
@@ -35,6 +36,21 @@ static const int   MAX_BOUNCE = 16;   /* HOLO_MAX_BOUNCE */
 static const int   MAX_RAYS = 32;     /* HOLO_MAX_RAYS */
 static const int   STACK = 16;        /* HOLO_STACK */
 static const float MIN_TP = 0.002;    /* HOLO_MIN_TP */
+static const int   WAVELENGTHS = 12;  /* HOLO_WAVELENGTHS */
+
+/* holo_albedo_at: an RGB color read at one wavelength through three smooth
+   bands that partition unity -- neutral colors are exact. */
+float albedo_at(float3 rgb, float lambda_um) {
+    float t_bg = saturate((lambda_um - 0.475) / (0.510 - 0.475));
+    float t_gr = saturate((lambda_um - 0.565) / (0.610 - 0.565));
+    return rgb.r * t_gr + rgb.g * (t_bg - t_gr) + rgb.b * (1.0 - t_bg);
+}
+
+/* holo_ior_at: Cauchy dispersion around the sodium D line. */
+float ior_at(float ior_d, float cauchy_b, float lambda_um) {
+    const float inv_d2 = 1.0 / (0.5893 * 0.5893);
+    return ior_d + cauchy_b * (1.0 / (lambda_um * lambda_um) - inv_d2);
+}
 
 /* holo_ray_sphere. Writes t and the normal on the arriving side. */
 bool ray_sphere(float3 ro, float3 rd, float3 center, float radius,
@@ -102,11 +118,12 @@ void fresnel(float cos_i, float n1, float n2, out float rs, out float rp) {
 bool nearest_hit(float3 ro, float3 rd,
                  out float best_t, out float3 best_n,
                  out float3 albedo, out float mirror,
-                 out float transmit, out float ior, out bool volume) {
+                 out float transmit, out float ior, out float disperse,
+                 out bool volume) {
     bool found = false;
     best_t = 1e30; best_n = float3(0, 0, 0);
     albedo = float3(0, 0, 0); mirror = 0;
-    transmit = 0; ior = 1; volume = false;
+    transmit = 0; ior = 1; disperse = 0; volume = false;
 
     float t; float3 n;
     for (int i = 0; i < (int)sphere_count; i++) {
@@ -117,6 +134,7 @@ bool nearest_hit(float3 ro, float3 rd,
             mirror = sph_albedo_mirror[i].w;
             transmit = sph_glass[i].x;
             ior = sph_glass[i].y;
+            disperse = sph_glass[i].z;
             volume = true;
             found = true;
         }
@@ -130,6 +148,7 @@ bool nearest_hit(float3 ro, float3 rd,
             mirror = rect_corner_mirror[j].w;
             transmit = rect_glass[j].x;
             ior = rect_glass[j].y;
+            disperse = rect_glass[j].z;
             volume = false;
             found = true;
         }
@@ -141,7 +160,7 @@ bool nearest_hit(float3 ro, float3 rd,
         int cell = (int)floor(p.x) + (int)floor(p.z);
         albedo = (cell & 1) ? floor_b : floor_a;
         mirror = floor_mirror;
-        transmit = 0; ior = 1; volume = false;
+        transmit = 0; ior = 1; disperse = 0; volume = false;
         found = true;
     }
     return found;
@@ -193,9 +212,9 @@ float3 trace(float3 ro, float3 rd) {
         int p_inside = st_inside[sp]; int p_depth = st_depth[sp];
 
         float best_t; float3 best_n; float3 albedo;
-        float mirror; float transmit; float ior; bool volume;
+        float mirror; float transmit; float ior; float disperse; bool volume;
         if (!nearest_hit(p_ro, p_rd, best_t, best_n, albedo, mirror,
-                         transmit, ior, volume)) {
+                         transmit, ior, disperse, volume)) {
             color += p_tp * sky(p_rd);
             continue;
         }
@@ -254,10 +273,103 @@ float3 trace(float3 ro, float3 rd) {
     return color;
 }
 
+/* holo_trace_lambda: the same walk with a scalar throughput -- one
+   wavelength's worth of light, refracting at n(lambda). */
+float trace_lambda(float3 ro, float3 rd, float lambda_um) {
+    float3 st_ro[16]; float3 st_rd[16]; float st_tp[16];
+    int st_inside[16]; int st_depth[16];
+    int sp = 0, processed = 0;
+    float intensity = 0.0;
+
+    st_ro[0] = ro; st_rd[0] = rd; st_tp[0] = 1.0;
+    st_inside[0] = 0; st_depth[0] = 0;
+    sp = 1;
+
+    [loop] while (sp > 0 && processed < MAX_RAYS) {
+        processed++;
+        sp--;
+        float3 p_ro = st_ro[sp]; float3 p_rd = st_rd[sp];
+        float p_tp = st_tp[sp];
+        int p_inside = st_inside[sp]; int p_depth = st_depth[sp];
+
+        float best_t; float3 best_n; float3 albedo;
+        float mirror; float transmit; float ior; float disperse; bool volume;
+        if (!nearest_hit(p_ro, p_rd, best_t, best_n, albedo, mirror,
+                         transmit, ior, disperse, volume)) {
+            intensity += p_tp * albedo_at(sky(p_rd), lambda_um);
+            continue;
+        }
+        float3 p = p_ro + best_t * p_rd;
+
+        float matte = 1.0 - mirror - transmit;
+        if (matte > 0.0) {
+            float diffuse = max(dot(best_n, sun_dir), 0.0);
+            if (diffuse > 0.0 && sun_blocked(p)) diffuse = 0.0;
+            float lambert = albedo_at(albedo, lambda_um)
+                          * (AMBIENT + (1.0 - AMBIENT) * diffuse);
+            intensity += p_tp * lambert * matte;
+        }
+
+        if (p_depth >= MAX_BOUNCE) continue;
+
+        float reflect_tint = albedo_at(albedo, lambda_um) * mirror;
+        if (transmit > 0.0) {
+            float n_glass = ior_at(ior, disperse, lambda_um);
+            float cos_i = -dot(best_n, p_rd);
+            float n1 = p_inside ? n_glass : 1.0;
+            float n2 = p_inside ? 1.0 : n_glass;
+            float rs, rp;
+            fresnel(cos_i, n1, n2, rs, rp);
+            float r = 0.5 * (rs + rp);
+
+            if (r < 1.0) {
+                float ttp = p_tp * albedo_at(albedo, lambda_um)
+                          * transmit * (1.0 - r);
+                if (ttp > MIN_TP && sp < STACK) {
+                    if (volume) {
+                        float eta = n1 / n2;
+                        float k = 1.0 - eta * eta * (1.0 - cos_i * cos_i);
+                        st_rd[sp] = eta * p_rd - (eta * -cos_i + sqrt(k)) * best_n;
+                        st_inside[sp] = p_inside ? 0 : 1;
+                    } else {
+                        st_rd[sp] = p_rd;
+                        st_inside[sp] = p_inside;
+                    }
+                    st_ro[sp] = p;
+                    st_tp[sp] = ttp;
+                    st_depth[sp] = p_depth + 1;
+                    sp++;
+                }
+            }
+            reflect_tint += transmit * r;
+        }
+
+        float rtp = p_tp * reflect_tint;
+        if (rtp > MIN_TP && sp < STACK) {
+            st_ro[sp] = p;
+            st_rd[sp] = reflect(p_rd, best_n);
+            st_tp[sp] = rtp;
+            st_inside[sp] = p_inside;
+            st_depth[sp] = p_depth + 1;
+            sp++;
+        }
+    }
+    return intensity;
+}
+
 float4 main(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
     /* holo_camera_ray, with the aspect derived from res on both sides. */
     float x = (uv.x * 2.0 - 1.0) * tan_half_fov * (res.x / res.y);
     float y = (1.0 - uv.y * 2.0) * tan_half_fov;
     float3 rd = normalize(cam_fwd + cam_right * x + cam_up * y);
+
+    if (spectral > 0.5) {
+        float3 color = float3(0, 0, 0);
+        [loop] for (int i = 0; i < WAVELENGTHS; i++) {
+            float in_i = trace_lambda(cam_pos, rd, spectral_lw[i].x);
+            color += spectral_lw[i].yzw * in_i;
+        }
+        return float4(color, 1.0);
+    }
     return float4(trace(cam_pos, rd), 1.0);
 }

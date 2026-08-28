@@ -6,7 +6,7 @@
 #include "oracle.h"
 
 int holo_oracle_diff(const HoloScene *scene, const HoloCamera *cam,
-                     HoloOracleStats *stats) {
+                     int spectral, HoloOracleStats *stats) {
     const int w = sapp_width(), h = sapp_height();
     stats->width = w;
     stats->height = h;
@@ -21,7 +21,11 @@ int holo_oracle_diff(const HoloScene *scene, const HoloCamera *cam,
         free(rgb);
         return 0;
     }
-    holo_trace_image(scene, cam, w, h, rgb);
+    if (spectral) {
+        holo_trace_image_spectral(scene, cam, w, h, rgb);
+    } else {
+        holo_trace_image(scene, cam, w, h, rgb);
+    }
 
     long long sum = 0;
     int outliers = 0, max_diff = 0;

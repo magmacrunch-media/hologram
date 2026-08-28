@@ -56,6 +56,16 @@ later milestone builds on.
   in the shader, so the CPU and GPU drop the same branches. A trace test
   sums a glass ball's branch weights to the hand-computed 0.998464: glass
   neither makes nor eats light.
+- **Spectral light** — `source/spectrum.c`: twelve fixed wavelengths across
+  the visible band (fixed, not sampled -- the oracle diff needs the CPU and
+  GPU tracing identical rays), Cauchy dispersion anchored at the sodium D
+  line (BK7's Abbe number computes to its catalog 64), and the
+  Wyman-Sloan-Shirley fits to the CIE 1931 color matching functions folding
+  intensities to sRGB, normalized so a flat spectrum is exact white.
+  `holo_trace_lambda()` walks one wavelength with a scalar throughput and
+  glass refracting at n(lambda); the spectral and RGB pipelines agree to the
+  float on neutral achromatic scenes, and part ways at the first dispersive
+  surface -- which is the point.
 
 ### Examples
 
@@ -71,6 +81,13 @@ later milestone builds on.
   a chrome sphere, a polished floor, all reflecting each other to real
   recursion depth. Screen-space reflection cannot draw this frame; the GPU
   version diffs against the oracle at 0.022/255 mean error.
+- **m4_glass** — the classic proof of real refraction: the checker floor
+  upside-down inside a ball lens, a tinted glass beside it, a standing pane
+  that turns mirror toward grazing angles because Fresnel says so.
+- **m5_spectral** — a crown ball and a flint ball in front of a white
+  stripe: fringeless seen directly, gentle fringes through BK7, a real
+  spectrum through the flint at five times the dispersion -- the same
+  reason camera lenses pair the two glasses.
 
 ### Repository
 
