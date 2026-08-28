@@ -16,9 +16,13 @@
 #include "source/geometry.h"  /* rays against the analytic surfaces             */
 #include "source/camera.h"    /* the camera as a ray generator                  */
 #include "source/cpu_trace.h" /* the CPU reference tracer: hologram's oracle    */
+#include "source/collision.h" /* walking: capsule vs walls, gravity             */
 #include "source/display.h"   /* window, GPU device, fullscreen tracing surface */
 #include "source/gpu_scene.h" /* the scene as the shader's uniform block        */
+#include "source/input.h"     /* keys held and mouse look, folded per frame     */
 #include "source/oracle.h"    /* holding the GPU frame to the CPU oracle        */
+#include "source/polar.h"     /* Stokes rows and Mueller matrices               */
+#include "source/spectrum.h"  /* wavelengths, dispersion, CIE folding           */
 #include "source/timestep.h"  /* fixed-step accumulator (ported from magnolia)  */
 
 #endif

@@ -14,6 +14,8 @@
  * shader letterboxes from there.
  */
 
+struct sapp_event;
+
 /* Per-frame uniforms every hologram shader receives, in this layout. Keep it
    16-byte aligned the way constant buffers want; grow it only from the end. */
 typedef struct {
@@ -39,9 +41,17 @@ typedef struct {
     void *uniforms;
     int   uniforms_size;
 
+    /* Called each frame BEFORE uniforms are read and the quad drawn: the
+       place a game runs its simulation and writes the camera into its
+       uniform block. */
+    void (*before_frame)(void);
+
     /* Called after each frame is drawn, still inside the frame loop: the
        place to read pixels back, count frames, request quit. */
     void (*after_frame)(void);
+
+    /* Every sokol event, for input. See input.h for the folding. */
+    void (*event_cb)(const struct sapp_event *ev);
 } HoloDisplayDesc;
 
 /* Fill in sokol's sapp_desc from ours. sokol owns main(), so a game's entry

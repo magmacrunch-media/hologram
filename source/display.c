@@ -60,6 +60,10 @@ void holo_display_frame(void) {
        calls "time" should advance only when frames do. */
     state.time += sapp_frame_duration();
 
+    if (state.desc.before_frame) {
+        state.desc.before_frame();
+    }
+
     HoloDisplayUniforms header = {
         .width  = (float)sapp_width(),
         .height = (float)sapp_height(),
@@ -171,12 +175,19 @@ static void cleanup_cb(void) {
     sg_shutdown();
 }
 
+static void event_cb(const sapp_event *ev) {
+    if (state.desc.event_cb) {
+        state.desc.event_cb(ev);
+    }
+}
+
 struct sapp_desc holo_display_app(const HoloDisplayDesc *desc) {
     state.desc = *desc;
     return (sapp_desc){
         .init_cb = init_cb,
         .frame_cb = holo_display_frame,
         .cleanup_cb = cleanup_cb,
+        .event_cb = event_cb,
         .width  = desc->width  ? desc->width  : 640,
         .height = desc->height ? desc->height : 480,
         .window_title = desc->title ? desc->title : "hologram",

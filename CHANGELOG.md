@@ -83,6 +83,18 @@ later milestone builds on.
   encodes to sRGB at its one display boundary (shader output, mirrored in
   the oracle's comparison), so dim physics -- an eighth of a wall through
   three polarizers -- reads as the eye would see it.
+- **Walking** — `source/collision.c`: a capsule reduced to radius and
+  height against a floor and axis-aligned walls, resolved one axis at a
+  time so hitting a wall at an angle slides along it. Held by tests to what
+  hands notice: landings stop at the floor, walls stop a radius away,
+  slides keep full sideways speed, jumps come back down. All the physics
+  Crystal Mirror Maze's player uses.
+- **Input** — `source/input.c` folds sokol events to keys-held plus
+  consumed mouse deltas, with capture built in (click to look, Escape to
+  free, keys cleared on focus loss so nothing sticks).
+- **Game hooks** — the display gains before_frame (simulate, then write
+  the camera into the uniforms) and an event callback, alongside the
+  existing after_frame; a game is now three callbacks and a scene.
 
 ### Examples
 
@@ -110,6 +122,12 @@ later milestone builds on.
   buries the absorption metaphor), and the same crossed pair around a
   full-wave plate glowing interference blue. Nothing painted; Mueller
   matrices times twelve wavelengths.
+- **m7_room** — the vertical slice: a room built from the engine's whole
+  vocabulary (facing mirrors, a glass window, a flint ball, a polarizer
+  pane, a polished checker) that you walk through in first person -- WASD
+  and mouse into a fixed-step walker with real collision, every frame
+  traced spectrally with polarization. T toggles spectral; walk up to the
+  flint ball and its TIR rings fringe into actual spectra.
 
 ### Repository
 
