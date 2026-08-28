@@ -4,39 +4,40 @@ An optics-first 3D game engine by [magmacrunch media](https://magmacrunch.com):
 a real-time spectral ray tracer where light obeys physics. Mirrors reflect
 recursively, prisms cast real spectra, polarizers extinguish at the angles
 Malus says they should, paraboloids focus at R/2, and diffraction gratings
-throw their orders by the conical grating equation — because the renderer
-traces wavelengths rather than RGB triples, carries a polarization state on
-every ray, and meets every surface in closed form.
+throw their orders by the conical grating equation. The renderer traces
+wavelengths rather than RGB triples, carries a polarization state on every
+ray, and meets every surface in closed form.
 
 Named after the Dag Henderson track "hologram of a dream", published by
 magmacrunch music.
 
-Current version: **0.1.0** — see [CHANGELOG.md](CHANGELOG.md). The full
+Current version: **0.1.0** (see [CHANGELOG.md](CHANGELOG.md)). The full
 reference lives in the [wiki](https://github.com/magmacrunchmedia/hologram/wiki).
 
 ![Two ruled panels diffracting sunlight into their orders](docs/images/m9-gratings.png)
 
 ## What it does that other engines don't
 
-Every effect below is computed from the physics, not approximated by a shader
-trick — and every one is pinned by a host test against its closed-form answer.
+Every effect below is computed from the physics rather than approximated by a
+shader trick, and every one is pinned by a host test against its closed-form
+answer.
 
 | | |
 |---|---|
 | **Recursive mirrors.** Facing mirrors produce a true infinite corridor to any depth, at any viewing angle. Screen-space reflection structurally cannot draw this frame; it can only reflect what is already on screen. | ![](docs/images/m3-mirrors.png) |
-| **Glass by the Fresnel equations** — the real pair, s and p computed separately, not Schlick's fit. Refraction, total internal reflection, and reflectance that rises toward grazing incidence because physics says so, not because a parameter does. | ![](docs/images/m4-glass.png) |
-| **Spectral light.** Twelve wavelengths per pixel, each refracting at its own Cauchy `n(λ)`, folded to sRGB through the CIE 1931 colour matching functions. Crown glass fringes gently; flint tears the same edge into a spectrum, five times wider — the reason camera lenses pair the two. | ![](docs/images/m5-spectral.png) |
+| **Glass by the Fresnel equations:** the real pair, s and p computed separately, not Schlick's fit. Refraction, total internal reflection, and reflectance that rises toward grazing incidence because physics says so rather than because a parameter does. | ![](docs/images/m4-glass.png) |
+| **Spectral light.** Twelve wavelengths per pixel, each refracting at its own Cauchy `n(λ)`, folded to sRGB through the CIE 1931 colour matching functions. Crown glass fringes gently; flint tears the same edge into a spectrum five times wider, which is why camera lenses pair the two. | ![](docs/images/m5-spectral.png) |
 | **Polarization.** Every ray carries a Stokes vector; every interface applies a Mueller matrix. Crossed polarizers go black, a third at 45° between them brings back exactly one eighth, and a waveplate writes interference colour because its retardance runs as 1/λ. | ![](docs/images/m6-polarization.png) |
-| **Curved mirrors as optics quotes them** — apex, axis, vertex radius of curvature, conic constant, rim. Stand at a paraboloid's focus and every zone of the dish reflects your eye into the sun, so the whole aperture flashes: a solar furnace, from the inside. | ![](docs/images/m8-furnace.png) |
-| **Diffraction gratings** in the conical/off-plane vector form. The groove component of the direction is conserved, the dispersion component picks up `mλ/d`, and `m = 0` falls out as exact specular. Orders sweep across a ruled panel as you walk, the way a CD tilts its colours. | ![](docs/images/m9-gratings.png) |
+| **Curved mirrors as optics quotes them:** apex, axis, vertex radius of curvature, conic constant, rim. Stand at a paraboloid's focus and every zone of the dish reflects your eye into the sun, so the whole aperture flashes. A solar furnace, from the inside. | ![](docs/images/m8-furnace.png) |
+| **Diffraction gratings** in the conical (off-plane) vector form. The groove component of the direction is conserved, the dispersion component picks up `mλ/d`, and `m = 0` falls out as exact specular. Orders sweep across a ruled panel as you walk, the way a CD tilts its colours. | ![](docs/images/m9-gratings.png) |
 
 ## Why a ray tracer
 
 The games this engine exists for (starting with Crystal Mirror Maze) are built
-entirely from analytic primitives — planes, rectangles, spheres, conics — and
-rendered at low resolution by design. Closed-form intersections at 640×480 are
-exactly the workload a fullscreen-shader ray tracer can afford in real time,
-and a tracer is the only renderer in which curved mirrors, refraction,
+entirely from analytic primitives: planes, rectangles, spheres, conics. They
+are rendered at low resolution by design. Closed-form intersections at 640×480
+are exactly the workload a fullscreen-shader ray tracer can afford in real
+time, and a tracer is the only renderer in which curved mirrors, refraction,
 dispersion and polarization are *correct* rather than faked.
 
 ## Building
@@ -48,8 +49,9 @@ build.bat          # builds every example into build\
 build.bat test     # builds and runs the host tests
 ```
 
-Run the examples from the repository root — they read `shaders\trace.hlsl` at
-startup, so you can edit the tracer and relaunch without recompiling.
+Run the examples from the repository root, since they read
+`shaders\trace.hlsl` at startup. You can edit the tracer and relaunch without
+recompiling.
 
 ## The examples
 
@@ -66,8 +68,8 @@ Each milestone left a runnable demo behind. Every GPU example accepts
 | `m4_glass` | A ball lens holding the checker floor upside down inside it. |
 | `m5_spectral` | Crown and flint glass in front of one white stripe. |
 | `m6_polarization` | The three-polarizer paradox, and a waveplate's interference colour. |
-| `m7_room` | **The vertical slice** — a room of mirrors, glass, a polarizer and a flint ball that you walk through in first person. |
-| `m8_furnace` | A paraboloid with its focus at eye height on the path: walk into it. |
+| `m7_room` | **The vertical slice:** a room of mirrors, glass, a polarizer and a flint ball that you walk through in first person. |
+| `m8_furnace` | A paraboloid with its focus at eye height on the path. Walk into it. |
 | `m9_spectrum` | Two ruled gratings throwing the sun's orders back at you. |
 
 `m7_room`, `m8_furnace` and `m9_spectrum` are interactive: click to capture the
@@ -106,7 +108,7 @@ by more than 8/255; the whole example suite currently sits between 0.02 and
 ### Engine modules
 
 Pure arithmetic is split from platform calls so the arithmetic is host
-testable — the discipline magnolia's `timestep.c` was extracted for.
+testable, the discipline magnolia's `timestep.c` was extracted for.
 
 | Module | |
 |---|---|
@@ -115,7 +117,7 @@ testable — the discipline magnolia's `timestep.c` was extracted for.
 | `spectrum.c` | Wavelength samples, Cauchy dispersion, CIE colour matching. |
 | `geometry.c` | Rays against spheres, planes, rectangles and conic dishes. |
 | `camera.c` | The camera as a ray generator. |
-| `cpu_trace.c` | The reference tracer — the oracle. |
+| `cpu_trace.c` | The reference tracer, the oracle. |
 | `gpu_scene.c` | The scene as the shader's uniform block. |
 | `collision.c` | Capsule-vs-walls walking with gravity. |
 | `timestep.c` | Fixed-step accumulator (ported from magnolia). |
@@ -139,14 +141,15 @@ Littrow retroreflection, and the conical invariant.
 
 ## Constraints worth knowing
 
-The GPU walk is **chain + fork**: each ray walks as a chain, every surface
+The GPU walk is **chain and fork**: each ray walks as a chain, every surface
 continuing in place and forking *at most one* side branch onto the stack. One
-push per interaction is a hard ceiling, because fxc — D3D11's shader compiler —
+push per interaction is a hard ceiling, because fxc (D3D11's shader compiler)
 silently corrupts the walk's stack arrays when a single branch pushes twice.
 Per-grating data also cannot live in dynamically indexed constant-buffer
-arrays for the same reason; the grating constants sit in scalar uniform slots
-instead. The CPU tracer mirrors the structure exactly so the oracle diff stays
-meaningful. See [Shader constraints](https://github.com/magmacrunchmedia/hologram/wiki/Shader-constraints)
+arrays for the same reason, so the grating constants sit in scalar uniform
+slots instead. The CPU tracer mirrors the structure exactly, which keeps the
+oracle diff meaningful. See
+[Shader constraints](https://github.com/magmacrunchmedia/hologram/wiki/Shader-constraints)
 in the wiki for the full account.
 
 ## Not in the engine, by design
@@ -164,10 +167,10 @@ collision is a capsule against axis-aligned walls.
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](LICENSE) — read it, learn from it, build on
-it, play with it; any noncommercial purpose is permitted, and commercial use
-is reserved to magmacrunch media (ask about a commercial licence). See
+[PolyForm Noncommercial 1.0.0](LICENSE): read it, learn from it, build on it,
+play with it. Any noncommercial purpose is permitted, and commercial use is
+reserved to magmacrunch media (ask about a commercial licence). See
 [NOTICE](NOTICE) for the exact boundary. This differs deliberately from
-magmacrunch's Apache-2.0 2D engines: those are infrastructure for anyone;
-hologram is the optics engine under magmacrunch's own games. Vendored sokol
-headers keep their zlib licence (`external/sokol/LICENSE`).
+magmacrunch's Apache-2.0 2D engines: those are infrastructure for anyone,
+while hologram is the optics engine under magmacrunch's own games. Vendored
+sokol headers keep their zlib licence (`external/sokol/LICENSE`).
