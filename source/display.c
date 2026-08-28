@@ -36,9 +36,17 @@ static void init_cb(void) {
         .logger.func = slog_func,
     });
 
+    /* Shader model 5.0, not sokol's 4.0 default: the tracer dynamically
+       indexes cbuffer arrays (scene lookups) AND large local arrays (the
+       ray stack), and SM4 has no native dynamic cbuffer indexing -- fxc
+       emulates it by copying arrays into indexable temps, and past a
+       certain count that emulation silently aliases the copies onto other
+       arrays. SM5 indexes constant buffers in hardware. */
     sg_shader shd = sg_make_shader(&(sg_shader_desc){
         .vertex_func.source = VS_HLSL,
+        .vertex_func.d3d11_target = "vs_5_0",
         .fragment_func.source = state.desc.fs_source,
+        .fragment_func.d3d11_target = "ps_5_0",
         .uniform_blocks[0] = {
             .stage = SG_SHADERSTAGE_FRAGMENT,
             .size = state.desc.uniforms

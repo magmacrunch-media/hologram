@@ -39,6 +39,18 @@ HoloV3 hv3_reflect(HoloV3 d, HoloV3 n);
    reflection, when Snell has no answer and the caller must reflect. */
 int hv3_refract(HoloV3 d, HoloV3 n, float eta, HoloV3 *out);
 
+/* The grating equation, in its conical/off-plane vector form. d arrives
+   (unit, into the surface), n is the normal on d's side, groove the groove
+   direction (unit, in the surface plane), and m_lambda_over_d carries m,
+   the wavelength and the period in one number. The component of the
+   direction along the grooves is conserved -- the conical invariant -- the
+   component along the dispersion direction (groove x n) picks up m lambda/d,
+   and the normal component rebalances to keep the result unit. m = 0 is
+   exactly specular reflection. Returns 1 and writes the diffracted
+   direction, or 0 when the order is evanescent and nothing propagates. */
+int holo_grating_order(HoloV3 d, HoloV3 n, HoloV3 groove,
+                       float m_lambda_over_d, HoloV3 *out);
+
 /* The Fresnel equations -- the real ones, not Schlick's fit. cos_i is the
    cosine of the incidence angle (positive), n1 the index the light arrives
    in, n2 the one it meets. Writes the s- and p-polarized power reflectances;

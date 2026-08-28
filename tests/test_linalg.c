@@ -110,10 +110,49 @@ static void test_fresnel(void) {
     check_close(rp, 1.0f, "TIR rp");
 }
 
+static void test_grating(void) {
+    printf("linalg: the grating equation, conical form\n");
+    HoloV3 n = hv3(0, 0, 1), groove = hv3(0, 1, 0), out;
+
+    /* m = 0 is exactly specular, at any skew. */
+    HoloV3 d = hv3_norm(hv3(0.3f, 0.4f, -0.85f));
+    check_int(holo_grating_order(d, n, groove, 0.0f, &out), 1, "0th propagates");
+    HoloV3 spec = hv3_reflect(d, n);
+    check_close(out.x, spec.x, "0th is specular x");
+    check_close(out.y, spec.y, "y");
+    check_close(out.z, spec.z, "z");
+
+    /* The conical invariant: every order keeps the groove component. */
+    check_int(holo_grating_order(d, n, groove, 0.31f, &out), 1, "+1 propagates");
+    check_close(hv3_dot(out, groove), hv3_dot(d, groove),
+                "the groove component is conserved");
+    check_close(hv3_len(out), 1.0f, "and the direction stays unit");
+
+    /* Littrow: in-plane at sin(theta) = lambda/2d, order -1 goes straight
+       back where it came from -- the alignment every grating lab uses. */
+    float sin_lit = 0.31f;   /* lambda/2d */
+    HoloV3 lit = hv3(sin_lit, 0, -sqrtf(1 - sin_lit * sin_lit));
+    check_int(holo_grating_order(lit, n, groove, -2.0f * sin_lit, &out), 1,
+              "Littrow order propagates");
+    check_close(out.x, -lit.x, "retroreflected x");
+    check_close(out.z, -lit.z, "retroreflected z");
+
+    /* Longer wavelengths diffract harder, and far enough they stop
+       propagating at all. */
+    HoloV3 out_red;
+    HoloV3 axial = hv3(0, 0, -1);
+    holo_grating_order(axial, n, groove, 0.45f, &out);
+    holo_grating_order(axial, n, groove, 0.65f, &out_red);
+    check(out_red.x > out.x, "red leaves at the wider angle");
+    check_int(holo_grating_order(axial, n, groove, 1.1f, &out), 0,
+              "past 90 degrees the order is evanescent");
+}
+
 int main(void) {
     test_arithmetic();
     test_reflect();
     test_refract();
     test_fresnel();
+    test_grating();
     return report();
 }

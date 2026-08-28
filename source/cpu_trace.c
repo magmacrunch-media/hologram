@@ -4,6 +4,8 @@
 #include "polar.h"
 #include "spectrum.h"
 
+const int holo_grating_m[HOLO_GRATING_ORDERS] = { -1, 0, 1, 2 };
+
 /* Everything shading needs to know about the nearest surface: where it is,
    which way it faces, what it is made of, and whether its glass is a volume
    (spheres) or a thin pane (rects). Shading never asks WHICH surface. */
@@ -15,7 +17,8 @@ typedef struct {
     float  disperse;
     int    volume;
     int    filter;           /* HOLO_FILTER_*; rects only */
-    int    rect;             /* which rect, for the filter's axis */
+    int    rect;             /* which rect, for a filter's or grating's axis */
+    float  grating;          /* period in um; 0 = not a grating */
 } HoloSurface;
 
 static int nearest_hit(const HoloScene *scene, HoloRay ray, HoloHit *hit,
@@ -36,6 +39,7 @@ static int nearest_hit(const HoloScene *scene, HoloRay ray, HoloHit *hit,
             surf->volume = 1;
             surf->filter = HOLO_FILTER_NONE;
             surf->rect = -1;
+            surf->grating = 0.0f;
             found = 1;
         }
     }
@@ -51,6 +55,7 @@ static int nearest_hit(const HoloScene *scene, HoloRay ray, HoloHit *hit,
             surf->volume = 0;
             surf->filter = scene->rects[i].filter;
             surf->rect = i;
+            surf->grating = scene->rects[i].grating_period;
             found = 1;
         }
     }
@@ -67,6 +72,7 @@ static int nearest_hit(const HoloScene *scene, HoloRay ray, HoloHit *hit,
             surf->volume = 0;
             surf->filter = HOLO_FILTER_NONE;
             surf->rect = -1;
+            surf->grating = 0.0f;
             found = 1;
         }
     }
@@ -86,6 +92,7 @@ static int nearest_hit(const HoloScene *scene, HoloRay ray, HoloHit *hit,
         surf->volume = 0;
         surf->filter = HOLO_FILTER_NONE;
         surf->rect = -1;
+        surf->grating = 0.0f;
         found = 1;
     }
     if (found) {
@@ -143,6 +150,7 @@ typedef struct {
     HoloV3   tp;
     int      inside;
     int      depth;
+    int      order;   /* which grating order this visit emits; see below */
     HoloSRow srow;
     HoloV3   frame;
 } PathRay;
@@ -191,6 +199,22 @@ HoloV3 holo_trace_ray(const HoloScene *scene, HoloRay primary) {
         HoloSurface surf;
         if (!nearest_hit(scene, p.ray, &hit, &surf)) {
             color = hv3_add(color, hv3_mul(p.tp, sky(scene, p.ray.dir)));
+            continue;
+        }
+
+        /* The RGB path has no wavelength, so a grating shows only its
+           zeroth (specular) order at that order's weight. The spectral
+           path fans the rest. */
+        if (surf.grating > 0.0f) {
+            HoloV3 tp = hv3_scale(p.tp, scene->rects[surf.rect].order_w[1]);
+            if (max3(tp) > HOLO_MIN_TP && sp < HOLO_STACK &&
+                p.depth < HOLO_MAX_BOUNCE) {
+                stack[sp++] = (PathRay){
+                    .ray = { .origin = hit.point,
+                             .dir = hv3_reflect(p.ray.dir, hit.normal) },
+                    .tp = tp, .inside = p.inside, .depth = p.depth + 1,
+                };
+            }
             continue;
         }
 
@@ -249,10 +273,14 @@ HoloV3 holo_trace_ray(const HoloScene *scene, HoloRay primary) {
                                                     surf.transmit * (1.0f - r)));
                 if (max3(tp) > HOLO_MIN_TP && sp < HOLO_STACK) {
                     PathRay t = { .tp = tp, .depth = p.depth + 1 };
+                    int refracted = 1;
                     if (surf.volume) {
                         /* In or out through the surface; the ray changes
-                           medium. r < 1 guarantees Snell has an answer. */
-                        hv3_refract(p.ray.dir, hit.normal, n1 / n2, &t.ray.dir);
+                           medium. Checked: at the razor edge of the
+                           critical angle Fresnel's float arithmetic can
+                           say "not TIR" while refract's disagrees. */
+                        refracted = hv3_refract(p.ray.dir, hit.normal,
+                                                n1 / n2, &t.ray.dir);
                         t.ray.origin = hit.point;
                         t.inside = !p.inside;
                     } else {
@@ -261,7 +289,9 @@ HoloV3 holo_trace_ray(const HoloScene *scene, HoloRay primary) {
                         t.ray = (HoloRay){ .origin = hit.point, .dir = p.ray.dir };
                         t.inside = p.inside;
                     }
-                    stack[sp++] = t;
+                    if (refracted) {
+                        stack[sp++] = t;
+                    }
                 }
             }
             reflect_tint = hv3_add(reflect_tint,
@@ -293,6 +323,14 @@ float holo_trace_lambda(const HoloScene *scene, HoloRay primary,
        reflections polarize with no special cases anywhere. Sources are
        unpolarized, so a path's contribution is source intensity times the
        row's first component. */
+    /* CHAIN + FORK: each popped ray is walked as a chain, every surface
+       continuing IN PLACE (reflection off glass and mirrors, transmission
+       through filters, the current order off a grating) and forking AT
+       MOST ONE side branch onto the stack (glass's transmitted ray, a
+       grating's next-order revisit). One push per interaction is a hard
+       ceiling: fxc corrupts the GPU walk's stack arrays when any single
+       branch pushes twice, and the CPU mirrors the GPU walk exactly so
+       the oracle diff stays meaningful. */
     PathRay stack[HOLO_STACK];
     int sp = 0, processed = 0;
     float intensity = 0.0f;
@@ -301,134 +339,191 @@ float holo_trace_lambda(const HoloScene *scene, HoloRay primary,
                              .frame = initial_frame(primary.dir) };
 
     while (sp > 0 && processed < HOLO_MAX_RAYS) {
-        processed++;
         PathRay p = stack[--sp];
 
-        HoloHit hit;
-        HoloSurface surf;
-        if (!nearest_hit(scene, p.ray, &hit, &surf)) {
-            intensity += p.srow.i
-                       * holo_albedo_at(sky(scene, p.ray.dir), lambda_um);
-            continue;
-        }
+        while (processed < HOLO_MAX_RAYS) {
+            processed++;
 
-        /* Filters: rotate into the pane's axis, apply its Mueller, carry
-           on straight. A waveplate's retardance scales as 1/lambda, so a
-           thick one between crossed polarizers writes its interference
-           colors through the spectral loop with no further help. */
-        if (surf.filter != HOLO_FILTER_NONE) {
-            if (p.depth >= HOLO_MAX_BOUNCE || sp >= HOLO_STACK) {
+            HoloHit hit;
+            HoloSurface surf;
+            if (!nearest_hit(scene, p.ray, &hit, &surf)) {
+                intensity += p.srow.i
+                           * holo_albedo_at(sky(scene, p.ray.dir), lambda_um);
+                break;
+            }
+
+            /* A grating fans the ray into its propagating orders, the
+               groove component conserved, each order weighted by its fixed
+               efficiency. The chain follows THIS visit's order; the fork
+               revisits the surface for the next. Weights are polarization-
+               neutral scalars for now -- a grating's true polarization
+               response is a solver's problem. */
+            if (surf.grating > 0.0f) {
+                if (p.depth >= HOLO_MAX_BOUNCE) {
+                    break;
+                }
+                const HoloRect *rect = &scene->rects[surf.rect];
+                HoloV3 groove = hv3_norm(hv3_add(
+                    hv3_scale(hv3_norm(rect->edge_u),
+                              cosf(rect->grating_angle)),
+                    hv3_scale(hv3_norm(rect->edge_v),
+                              sinf(rect->grating_angle))));
+                if (p.order < HOLO_GRATING_ORDERS - 1 && sp < HOLO_STACK) {
+                    PathRay revisit = p;
+                    revisit.order = p.order + 1;
+                    stack[sp++] = revisit;
+                }
+                HoloV3 out;
+                if (!holo_grating_order(p.ray.dir, hit.normal, groove,
+                        (float)holo_grating_m[p.order] * lambda_um
+                            / surf.grating, &out)) {
+                    break;   /* this order is evanescent */
+                }
+                HoloSRow s = holo_srow_scale(p.srow, rect->order_w[p.order]);
+                if (s.i <= HOLO_MIN_TP) {
+                    break;
+                }
+                p.ray = (HoloRay){ .origin = hit.point, .dir = out };
+                p.srow = s;
+                p.frame = initial_frame(out);
+                p.depth++;
+                p.order = 0;
                 continue;
             }
-            HoloV3 axis = filter_axis(&scene->rects[surf.rect], p.ray.dir,
-                                      p.frame);
-            float c2, s2;
-            holo_frame_rot(p.frame, axis, p.ray.dir, &c2, &s2);
-            HoloSRow s = holo_srow_rotate(p.srow, c2, s2);
-            if (surf.filter == HOLO_POLARIZER) {
-                s = holo_srow_polarizer(s);
-            } else {
-                float d = scene->rects[surf.rect].retard
-                        * 0.5893f / lambda_um;
-                s = holo_srow_mueller(s, 1, 0, cosf(d), sinf(d));
-            }
-            if (s.i > HOLO_MIN_TP) {
-                stack[sp++] = (PathRay){
-                    .ray = { .origin = hit.point, .dir = p.ray.dir },
-                    .inside = p.inside, .depth = p.depth + 1,
-                    .srow = s, .frame = axis,
-                };
-            }
-            continue;
-        }
 
-        float matte = 1.0f - surf.mirror - surf.transmit;
-        if (matte > 0.0f) {
-            float diffuse = hv3_dot(hit.normal, scene->sun_dir);
-            if (diffuse < 0.0f) {
-                diffuse = 0.0f;
-            }
-            if (diffuse > 0.0f && sun_blocked(scene, hit.point)) {
-                diffuse = 0.0f;
-            }
-            float lambert = holo_albedo_at(surf.albedo, lambda_um)
-                          * (HOLO_AMBIENT + (1.0f - HOLO_AMBIENT) * diffuse);
-            intensity += p.srow.i * lambert * matte;
-        }
-
-        if (p.depth >= HOLO_MAX_BOUNCE) {
-            continue;
-        }
-
-        /* The s vector of the plane of incidence is the basis both Fresnel
-           branches speak; at normal incidence there is no plane and no
-           rotation to do. */
-        HoloV3 s_hat = hv3_cross(p.ray.dir, hit.normal);
-        float c2 = 1.0f, s2 = 0.0f;
-        if (hv3_dot(s_hat, s_hat) > 1e-6f) {
-            s_hat = hv3_norm(s_hat);
-            holo_frame_rot(p.frame, s_hat, p.ray.dir, &c2, &s2);
-        } else {
-            s_hat = p.frame;
-        }
-        HoloSRow srow_sp = holo_srow_rotate(p.srow, c2, s2);
-
-        float mtint = holo_albedo_at(surf.albedo, lambda_um) * surf.mirror;
-        float ra = mtint, rb = 0.0f, rc = mtint, rd = 0.0f;
-
-        if (surf.transmit > 0.0f) {
-            float n_glass = holo_ior_at(surf.ior, surf.disperse, lambda_um);
-            float cos_i = -hv3_dot(hit.normal, p.ray.dir);
-            float n1 = p.inside ? n_glass : 1.0f;
-            float n2 = p.inside ? 1.0f : n_glass;
-            float rs, rp, ts, tp_amp, f, delta;
-            int tir = holo_fresnel_amp(cos_i, n1, n2,
-                                       &rs, &rp, &ts, &tp_amp, &f, &delta);
-
-            if (!tir) {
-                float k = holo_albedo_at(surf.albedo, lambda_um)
-                        * surf.transmit;
-                HoloSRow st = holo_srow_mueller(srow_sp,
-                        k * 0.5f * f * (ts * ts + tp_amp * tp_amp),
-                        k * 0.5f * f * (ts * ts - tp_amp * tp_amp),
-                        k * f * ts * tp_amp, 0.0f);
-                if (st.i > HOLO_MIN_TP && sp < HOLO_STACK) {
-                    PathRay t = { .depth = p.depth + 1, .srow = st,
-                                  .frame = s_hat };
-                    if (surf.volume) {
-                        hv3_refract(p.ray.dir, hit.normal, n1 / n2,
-                                    &t.ray.dir);
-                        t.ray.origin = hit.point;
-                        t.inside = !p.inside;
-                    } else {
-                        t.ray = (HoloRay){ .origin = hit.point,
-                                           .dir = p.ray.dir };
-                        t.inside = p.inside;
-                    }
-                    stack[sp++] = t;
+            /* Filters: rotate into the pane's axis, apply its Mueller,
+               carry the chain on straight. A waveplate's retardance scales
+               as 1/lambda, so a thick one between crossed polarizers
+               writes its interference colors through the spectral loop
+               with no further help. */
+            if (surf.filter != HOLO_FILTER_NONE) {
+                if (p.depth >= HOLO_MAX_BOUNCE) {
+                    break;
                 }
-                ra += surf.transmit * 0.5f * (rs * rs + rp * rp);
-                rb += surf.transmit * 0.5f * (rs * rs - rp * rp);
-                rc += surf.transmit * rs * rp;
-            } else {
-                /* TIR: everything reflects, p delayed against s -- real
-                   retardance, the kind a Fresnel rhomb is cut to use. */
-                ra += surf.transmit;
-                rc += surf.transmit * cosf(delta);
-                rd += surf.transmit * sinf(delta);
+                HoloV3 axis = filter_axis(&scene->rects[surf.rect],
+                                          p.ray.dir, p.frame);
+                float c2, s2;
+                holo_frame_rot(p.frame, axis, p.ray.dir, &c2, &s2);
+                HoloSRow s = holo_srow_rotate(p.srow, c2, s2);
+                if (surf.filter == HOLO_POLARIZER) {
+                    s = holo_srow_polarizer(s);
+                } else {
+                    float d = scene->rects[surf.rect].retard
+                            * 0.5893f / lambda_um;
+                    s = holo_srow_mueller(s, 1, 0, cosf(d), sinf(d));
+                }
+                if (s.i <= HOLO_MIN_TP) {
+                    break;
+                }
+                p.ray.origin = hit.point;
+                p.srow = s;
+                p.frame = axis;
+                p.depth++;
+                p.order = 0;
+                continue;
             }
-        }
 
-        HoloSRow sr = holo_srow_mueller(srow_sp, ra, rb, rc, rd);
-        if (sr.i > HOLO_MIN_TP && sp < HOLO_STACK) {
-            stack[sp++] = (PathRay){
-                .ray = { .origin = hit.point,
-                         .dir = hv3_reflect(p.ray.dir, hit.normal) },
-                .inside = p.inside,
-                .depth = p.depth + 1,
-                .srow = sr,
-                .frame = s_hat,
-            };
+            float matte = 1.0f - surf.mirror - surf.transmit;
+            if (matte > 0.0f) {
+                float diffuse = hv3_dot(hit.normal, scene->sun_dir);
+                if (diffuse < 0.0f) {
+                    diffuse = 0.0f;
+                }
+                if (diffuse > 0.0f && sun_blocked(scene, hit.point)) {
+                    diffuse = 0.0f;
+                }
+                float lambert = holo_albedo_at(surf.albedo, lambda_um)
+                              * (HOLO_AMBIENT
+                                 + (1.0f - HOLO_AMBIENT) * diffuse);
+                intensity += p.srow.i * lambert * matte;
+            }
+
+            if (p.depth >= HOLO_MAX_BOUNCE) {
+                break;
+            }
+
+            /* The s vector of the plane of incidence is the basis both
+               Fresnel branches speak; at normal incidence there is no
+               plane and no rotation to do. */
+            HoloV3 s_hat = hv3_cross(p.ray.dir, hit.normal);
+            float c2 = 1.0f, s2 = 0.0f;
+            if (hv3_dot(s_hat, s_hat) > 1e-6f) {
+                s_hat = hv3_norm(s_hat);
+                holo_frame_rot(p.frame, s_hat, p.ray.dir, &c2, &s2);
+            } else {
+                s_hat = p.frame;
+            }
+            HoloSRow srow_sp = holo_srow_rotate(p.srow, c2, s2);
+
+            float mtint = holo_albedo_at(surf.albedo, lambda_um)
+                        * surf.mirror;
+            float ra = mtint, rb = 0.0f, rc = mtint, rd = 0.0f;
+
+            if (surf.transmit > 0.0f) {
+                float n_glass = holo_ior_at(surf.ior, surf.disperse,
+                                            lambda_um);
+                float cos_i = -hv3_dot(hit.normal, p.ray.dir);
+                float n1 = p.inside ? n_glass : 1.0f;
+                float n2 = p.inside ? 1.0f : n_glass;
+                float rs, rp, ts, tp_amp, f, delta;
+                int tir = holo_fresnel_amp(cos_i, n1, n2, &rs, &rp,
+                                           &ts, &tp_amp, &f, &delta);
+
+                if (!tir) {
+                    /* The fork: the transmitted ray. */
+                    float k = holo_albedo_at(surf.albedo, lambda_um)
+                            * surf.transmit;
+                    HoloSRow st = holo_srow_mueller(srow_sp,
+                            k * 0.5f * f * (ts * ts + tp_amp * tp_amp),
+                            k * 0.5f * f * (ts * ts - tp_amp * tp_amp),
+                            k * f * ts * tp_amp, 0.0f);
+                    if (st.i > HOLO_MIN_TP && sp < HOLO_STACK) {
+                        PathRay t = { .depth = p.depth + 1, .srow = st,
+                                      .frame = s_hat };
+                        int refracted = 1;
+                        if (surf.volume) {
+                            /* Checked: at the razor edge of the critical
+                               angle, Fresnel's float arithmetic can say
+                               "not TIR" while refract's says otherwise --
+                               an unchecked call here once pushed an
+                               uninitialized direction. */
+                            refracted = hv3_refract(p.ray.dir, hit.normal,
+                                                    n1 / n2, &t.ray.dir);
+                            t.ray.origin = hit.point;
+                            t.inside = !p.inside;
+                        } else {
+                            t.ray = (HoloRay){ .origin = hit.point,
+                                               .dir = p.ray.dir };
+                            t.inside = p.inside;
+                        }
+                        if (refracted) {
+                            stack[sp++] = t;
+                        }
+                    }
+                    ra += surf.transmit * 0.5f * (rs * rs + rp * rp);
+                    rb += surf.transmit * 0.5f * (rs * rs - rp * rp);
+                    rc += surf.transmit * rs * rp;
+                } else {
+                    /* TIR: everything reflects, p delayed against s --
+                       real retardance, the kind a Fresnel rhomb is cut
+                       to use. */
+                    ra += surf.transmit;
+                    rc += surf.transmit * cosf(delta);
+                    rd += surf.transmit * sinf(delta);
+                }
+            }
+
+            /* The chain: the reflected ray. */
+            HoloSRow sr = holo_srow_mueller(srow_sp, ra, rb, rc, rd);
+            if (sr.i <= HOLO_MIN_TP) {
+                break;
+            }
+            p.ray = (HoloRay){ .origin = hit.point,
+                               .dir = hv3_reflect(p.ray.dir, hit.normal) };
+            p.srow = sr;
+            p.frame = s_hat;
+            p.depth++;
+            p.order = 0;
         }
     }
     return intensity;

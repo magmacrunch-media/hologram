@@ -109,6 +109,34 @@ later milestone builds on.
   focus every point of the dish reflects the eye into the sun, so the
   whole aperture flashes -- the solar-furnace test pins it at exactly the
   disk intensity on the focus and plain sky half a meter off it.
+- **Diffraction gratings** — `holo_grating_order()` in linalg.c is the
+  conical/off-plane vector grating equation: the groove component of the
+  direction is conserved, the dispersion component picks up m lambda/d,
+  and m = 0 falls out as exact specular. Rects can be reflection gratings
+  (period, groove angle, fixed weights for orders m = -1, 0, +1, +2).
+  Held by tests to Littrow retroreflection, the conical invariant, and an
+  energy audit where the second order joins the sum exactly at the
+  wavelength the equation admits it. Rendered live, a ruled panel paints
+  the Rayleigh order-cutoff color bands and sweeps them as you walk.
+- **The spectral walk is now CHAIN + FORK** — each ray walks as a chain,
+  every surface continuing in place (reflections, filter transmission,
+  the current grating order) and forking at most ONE side branch onto the
+  stack (glass's transmitted ray, a grating's next-order revisit, carried
+  in the depth field's high bits). One push per interaction is a hard
+  ceiling: fxc, D3D11's shader compiler, silently corrupts the walk's
+  stack arrays when any single branch pushes twice -- a defect that took
+  a long forensic session to corner (per-grating cbuffer arrays also read
+  back as garbage under dynamic indexing, hence the two scalar grating
+  slots in the uniform block). The CPU mirrors the structure exactly, so
+  the oracle diff stays meaningful; the m9 diff now agrees to a MAX error
+  of 1/255 on a plain-floor scene.
+- **Checked refraction at the critical edge** — both walks now check the
+  refract discriminant before pushing the transmitted ray: at the razor
+  edge of the critical angle, Fresnel's float arithmetic can say "not
+  TIR" while refract's disagrees, and the unchecked call pushed an
+  uninitialized direction (NaNs the oracle now also clamps defensively).
+  The diff outlier bar moves 0.5% -> 0.75%: a dispersive ball traced at
+  twelve wavelengths has twelve TIR rims of legitimate float-coin pixels.
 
 ### Examples
 
@@ -147,6 +175,11 @@ later milestone builds on.
   reflected image swells until, crossing the focus, the whole aperture
   flashes blinding white -- a solar furnace from the inside. A concave
   shaving mirror beside the path hangs the world upside down.
+- **m9_spectrum** — two ruled panels (833 and 1430 lines/mm, grooves
+  vertical) under a fat low sun: the coarse one shimmers, the fine one
+  wears its order-cutoff spectrum as a color gradient that sweeps with
+  your eye position, the way a CD tilts its colors. T toggles spectral
+  and the colors vanish -- RGB light has no wavelength to sort.
 
 ### Repository
 

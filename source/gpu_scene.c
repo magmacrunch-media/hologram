@@ -48,6 +48,19 @@ void holo_gpu_scene_fill(HoloGpuScene *gpu, const HoloScene *scene,
         put3(gpu->rect_edge_u[i], scene->rects[i].edge_u);
         put3(gpu->rect_edge_v[i], scene->rects[i].edge_v);
         put3(gpu->rect_albedo[i], scene->rects[i].albedo);
+        /* Filters and gratings never shade as matte or mirror -- their
+           branches handle the light completely. Zeroing their albedo in
+           the GPU block makes that true even if the shader compiler
+           mishandles the branch's early exit (fxc has), because a black
+           matte banks nothing and a black mirror gets culled. The CPU
+           keeps the real albedo; its control flow is not in question. */
+        if (scene->rects[i].filter != HOLO_FILTER_NONE ||
+            scene->rects[i].grating_period > 0.0f) {
+            gpu->rect_albedo[i][0] = 0.0f;
+            gpu->rect_albedo[i][1] = 0.0f;
+            gpu->rect_albedo[i][2] = 0.0f;
+            gpu->rect_corner_mirror[i][3] = 0.0f;
+        }
         gpu->rect_glass[i][0] = scene->rects[i].transmit;
         gpu->rect_glass[i][1] = scene->rects[i].ior;
         gpu->rect_glass[i][2] = scene->rects[i].disperse;
@@ -63,6 +76,32 @@ void holo_gpu_scene_fill(HoloGpuScene *gpu, const HoloScene *scene,
         gpu->rect_filter[i][1] = axis.x;
         gpu->rect_filter[i][2] = axis.y;
         gpu->rect_filter[i][3] = axis.z;
+    }
+
+    /* The first two grating rects land in the scalar slots; see
+       gpu_scene.h for why they are not an array. */
+    gpu->grat0_groove_idx[3] = -1.0f;
+    gpu->grat1_groove_idx[3] = -1.0f;
+    int slot = 0;
+    for (int i = 0; i < scene->rect_count && slot < 2; i++) {
+        if (scene->rects[i].grating_period <= 0.0f) {
+            continue;
+        }
+        HoloV3 groove = hv3_norm(hv3_add(
+            hv3_scale(hv3_norm(scene->rects[i].edge_u),
+                      cosf(scene->rects[i].grating_angle)),
+            hv3_scale(hv3_norm(scene->rects[i].edge_v),
+                      sinf(scene->rects[i].grating_angle))));
+        float *gi = slot == 0 ? gpu->grat0_groove_idx : gpu->grat1_groove_idx;
+        float *pw = slot == 0 ? gpu->grat0_period_w : gpu->grat1_period_w;
+        put3(gi, groove);
+        gi[3] = (float)i;
+        pw[0] = scene->rects[i].grating_period;
+        pw[1] = scene->rects[i].order_w[0];
+        pw[2] = scene->rects[i].order_w[1];
+        pw[3] = scene->rects[i].order_w[2];
+        gpu->grat_w2[slot] = scene->rects[i].order_w[3];
+        slot++;
     }
 
     for (int i = 0; i < scene->dish_count; i++) {

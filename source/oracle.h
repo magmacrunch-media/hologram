@@ -7,8 +7,9 @@
  * same frame through cpu_trace.c, and compares. Call it from a display
  * after_frame callback, a few frames in. The two images are float twins,
  * not bit twins -- drivers reassociate math -- so the bar is a mean error
- * under 1/255 and under 0.5% of pixels off by more than 8/255 (silhouette
- * pixels, where a grazing ray hits on one side and misses on the other).
+ * under 1/255 and under 0.75% of pixels off by more than 8/255 (razor
+ * edges: silhouettes, and glass at the critical angle, where a grazing
+ * ray resolves differently on each side).
  */
 
 #include "cpu_trace.h"

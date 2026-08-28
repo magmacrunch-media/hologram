@@ -69,6 +69,14 @@ typedef struct {
 #define HOLO_POLARIZER        1
 #define HOLO_WAVEPLATE        2
 
+/* The orders a grating panel traces, and their fixed efficiency weights.
+   m = -1, 0, +1, +2: both first orders for the symmetric spectra, the
+   second for the order-overlap every spectroscopy course teaches, and the
+   zeroth is specular. Weights are hand-set scalars -- rigorous efficiency
+   is a solver's job (gratinglab's), not a renderer's. */
+#define HOLO_GRATING_ORDERS 4
+extern const int holo_grating_m[HOLO_GRATING_ORDERS];
+
 typedef struct {
     HoloV3 corner;
     HoloV3 edge_u, edge_v;   /* lengths are the panel's size */
@@ -80,6 +88,15 @@ typedef struct {
     int    filter;           /* HOLO_FILTER_NONE / POLARIZER / WAVEPLATE */
     float  filter_angle;     /* axis, radians from edge_u toward edge_v */
     float  retard;           /* waveplate retardance at the D line, radians */
+
+    /* A reflection grating: period in micrometers (0 = not a grating; 1.2
+       is a spectroscopist's 833 lines/mm), grooves running at
+       grating_angle radians from edge_u, per-order weights as above.
+       Gratings ignore the glass and filter fields; the RGB pipeline, which
+       has no wavelength, shows only the zeroth order. */
+    float  grating_period;
+    float  grating_angle;
+    float  order_w[HOLO_GRATING_ORDERS];
 } HoloRect;
 
 /* A curved mirror, in the language optics quotes them: apex, axis, vertex

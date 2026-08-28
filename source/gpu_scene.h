@@ -34,7 +34,14 @@ typedef struct {
     float rect_edge_v[HOLO_MAX_RECTS][4];
     float rect_albedo[HOLO_MAX_RECTS][4];
     float rect_glass[HOLO_MAX_RECTS][4];            /* x transmit, y ior, z disperse, w retard */
-    float rect_filter[HOLO_MAX_RECTS][4];           /* x mode, yzw axis in the pane */
+    /* x mode (0 none / 1 polarizer / 2 waveplate / 3 grating), yzw the
+       filter axis or the groove direction. A grating rect repurposes the
+       glass and albedo lanes it never uses -- rect_glass becomes (period,
+       w-1, w0, w+1) and rect_albedo.x the +2 weight -- because the shader
+       cannot afford two more dynamically indexed arrays: fxc's indexable
+       register file tops out and silently aliases the overflow into other
+       arrays. Pack, don't append. */
+    float rect_filter[HOLO_MAX_RECTS][4];
     float dish_apex_r[HOLO_MAX_DISHES][4];          /* xyz apex, w curv_r */
     float dish_axis_k[HOLO_MAX_DISHES][4];          /* xyz axis, w conic_k */
     float dish_albedo_mirror[HOLO_MAX_DISHES][4];   /* xyz albedo, w mirror */
@@ -44,6 +51,19 @@ typedef struct {
        shader must not re-derive these: CPU and GPU folding the same floats
        is part of what the oracle diff certifies. */
     float spectral_lw[HOLO_WAVELENGTHS][4];
+
+    /* Up to two gratings, as SCALAR (non-array) fields the shader reads
+       statically. Every attempt to read per-grating data through a
+       dynamically indexed cbuffer array came back as garbage under fxc --
+       across shader models and restructurings -- so the grating branch
+       selects one of these two slots by comparing the hit's rect index
+       against the slot's own index. More than two gratings render as
+       matte black on the GPU (the CPU has no such limit). */
+    float grat0_groove_idx[4];   /* xyz groove dir, w rect index or -1 */
+    float grat0_period_w[4];     /* x period um, yzw weights m=-1,0,+1 */
+    float grat1_groove_idx[4];
+    float grat1_period_w[4];
+    float grat_w2[4];            /* x slot0's +2 weight, y slot1's */
 } HoloGpuScene;
 
 /* Write scene and camera into the block. The camera's aspect is NOT carried:

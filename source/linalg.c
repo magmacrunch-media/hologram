@@ -33,6 +33,22 @@ HoloV3 hv3_reflect(HoloV3 d, HoloV3 n) {
     return hv3_sub(d, hv3_scale(n, 2.0f * hv3_dot(d, n)));
 }
 
+int holo_grating_order(HoloV3 d, HoloV3 n, HoloV3 groove,
+                       float m_lambda_over_d, HoloV3 *out) {
+    HoloV3 q = hv3_cross(groove, n);   /* dispersion direction, in-plane */
+    float alpha = hv3_dot(d, q) + m_lambda_over_d;
+    float beta = hv3_dot(d, groove);   /* conserved along the grooves */
+    /* Written as !(rem > 0) to match the shader, whose speculated branches
+       can hand this a NaN; on the CPU the two spellings are the same. */
+    float rem = 1.0f - alpha * alpha - beta * beta;
+    if (!(rem > 0.0f)) {
+        return 0;   /* evanescent: this order does not propagate */
+    }
+    *out = hv3_add(hv3_add(hv3_scale(q, alpha), hv3_scale(groove, beta)),
+                   hv3_scale(n, sqrtf(rem)));
+    return 1;
+}
+
 void holo_fresnel(float cos_i, float n1, float n2, float *rs, float *rp) {
     float sin_i = sqrtf(1.0f - cos_i * cos_i);
     float sin_t = (n1 / n2) * sin_i;

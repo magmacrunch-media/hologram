@@ -26,13 +26,26 @@ cbuffer params : register(b0) {
     float4 rect_edge_u[8];
     float4 rect_edge_v[8];
     float4 rect_albedo[8];
-    float4 rect_glass[8];     /* x transmit, y ior, z disperse, w retard */
-    float4 rect_filter[8];    /* x mode (0/1/2), yzw axis in the pane */
+    float4 rect_glass[8];     /* x transmit, y ior, z disperse, w retard --
+                                 or, when the rect is a grating: x period um,
+                                 yzw the m = -1, 0, +1 order weights */
+    float4 rect_filter[8];    /* x mode (0 none/1 polarizer/2 waveplate/
+                                 3 grating), yzw filter axis or groove dir */
     float4 dish_apex_r[4];    /* xyz apex, w vertex radius of curvature */
     float4 dish_axis_k[4];    /* xyz axis, w conic constant */
     float4 dish_albedo_mirror[4];
     float4 dish_rim_count[4]; /* x rim; [0].y = dish count */
     float4 spectral_lw[12];   /* x lambda um, yzw CIE-derived sRGB weight */
+
+    /* Up to two gratings as SCALAR slots, matched by rect index: every
+       attempt to read per-grating data through a dynamically indexed
+       cbuffer array came back as garbage under fxc, across shader models
+       and restructurings. Scalar fields read statically and correctly. */
+    float4 grat0_groove_idx;  /* xyz groove dir, w rect index or -1 */
+    float4 grat0_period_w;    /* x period um, yzw weights m = -1, 0, +1 */
+    float4 grat1_groove_idx;
+    float4 grat1_period_w;
+    float4 grat_w2;           /* x slot0's +2 weight, y slot1's */
 };
 
 static const float T_MIN = 1e-3;      /* HOLO_T_MIN */
@@ -174,11 +187,12 @@ bool nearest_hit(float3 ro, float3 rd,
                  out float best_t, out float3 best_n,
                  out float3 albedo, out float mirror,
                  out float transmit, out float ior, out float disperse,
-                 out bool volume) {
+                 out bool volume, out int rect_id) {
     bool found = false;
     best_t = 1e30; best_n = float3(0, 0, 0);
     albedo = float3(0, 0, 0); mirror = 0;
     transmit = 0; ior = 1; disperse = 0; volume = false;
+    rect_id = -1;
 
     float t; float3 n;
     for (int i = 0; i < (int)sphere_count; i++) {
@@ -192,6 +206,7 @@ bool nearest_hit(float3 ro, float3 rd,
             disperse = sph_glass[i].z;
             volume = true;
             found = true;
+            rect_id = -1;
         }
     }
     for (int j = 0; j < (int)rect_count; j++) {
@@ -206,6 +221,7 @@ bool nearest_hit(float3 ro, float3 rd,
             disperse = rect_glass[j].z;
             volume = false;
             found = true;
+            rect_id = j;
         }
     }
     for (int k = 0; k < (int)dish_rim_count[0].y; k++) {
@@ -217,6 +233,7 @@ bool nearest_hit(float3 ro, float3 rd,
             mirror = dish_albedo_mirror[k].w;
             transmit = 0; ior = 1; disperse = 0; volume = false;
             found = true;
+            rect_id = -1;
         }
     }
     if (has_floor > 0.5 && ray_floor(ro, rd, t) && t < best_t) {
@@ -228,6 +245,7 @@ bool nearest_hit(float3 ro, float3 rd,
         mirror = floor_mirror;
         transmit = 0; ior = 1; disperse = 0; volume = false;
         found = true;
+        rect_id = -1;
     }
     return found;
 }
@@ -261,19 +279,6 @@ float3 sky(float3 dir) {
     return lerp(horizon, zenith, 0.5 * (dir.y + 1.0));
 }
 
-/* Which rect the nearest hit was (or -1), so filters can find their axis. */
-int nearest_rect(float3 ro, float3 rd, float best_t) {
-    float t; float3 n;
-    for (int j = 0; j < (int)rect_count; j++) {
-        if (ray_rect(ro, rd, rect_corner_mirror[j].xyz,
-                     rect_edge_u[j].xyz, rect_edge_v[j].xyz, t, n) &&
-            abs(t - best_t) < 1e-4) {
-            return j;
-        }
-    }
-    return -1;
-}
-
 /* holo_trace_ray: the stack walk, matching cpu_trace.c's caps, push order
    (refraction below reflection) and cull threshold exactly -- the two sides
    must drop the same branches. */
@@ -296,18 +301,36 @@ float3 trace(float3 ro, float3 rd) {
 
         float best_t; float3 best_n; float3 albedo;
         float mirror; float transmit; float ior; float disperse; bool volume;
+        int f_rect;
         if (!nearest_hit(p_ro, p_rd, best_t, best_n, albedo, mirror,
-                         transmit, ior, disperse, volume)) {
+                         transmit, ior, disperse, volume, f_rect)) {
             color += p_tp * sky(p_rd);
             continue;
         }
         float3 p = p_ro + best_t * p_rd;
 
+        /* The RGB path has no wavelength: a grating shows only its
+           specular order at that order's weight, read from its scalar
+           slot. */
+        if (f_rect >= 0 && (f_rect == (int)grat0_groove_idx.w ||
+                            f_rect == (int)grat1_groove_idx.w)) {
+            float w0 = f_rect == (int)grat0_groove_idx.w
+                     ? grat0_period_w.z : grat1_period_w.z;
+            float3 gtp = p_tp * w0;
+            if (max(gtp.x, max(gtp.y, gtp.z)) > MIN_TP && sp < STACK &&
+                p_depth < MAX_BOUNCE) {
+                st_ro[sp] = p; st_rd[sp] = reflect(p_rd, best_n);
+                st_tp[sp] = gtp;
+                st_inside[sp] = p_inside; st_depth[sp] = p_depth + 1;
+                sp++;
+            }
+            continue;
+        }
+
         /* The RGB path approximates filters: a polarizer is a flat 50%,
            a waveplate is clear. The spectral walk does them right. */
-        int f_rect = volume ? -1 : nearest_rect(p_ro, p_rd, best_t);
         int f_mode = f_rect >= 0 ? (int)rect_filter[f_rect].x : 0;
-        if (f_mode != 0) {
+        if (f_mode == 1 || f_mode == 2) {
             float3 ftp = p_tp * (f_mode == 1 ? 0.5 : 1.0);
             if (max(ftp.x, max(ftp.y, ftp.z)) > MIN_TP && sp < STACK &&
                 p_depth < MAX_BOUNCE) {
@@ -341,19 +364,27 @@ float3 trace(float3 ro, float3 rd) {
             if (r < 1.0) {
                 float3 tp = p_tp * albedo * (transmit * (1.0 - r));
                 if (max(tp.x, max(tp.y, tp.z)) > MIN_TP && sp < STACK) {
+                    bool refracted = true;
                     if (volume) {
+                        /* Checked like the CPU: at the razor edge of the
+                           critical angle Fresnel can say "not TIR" while
+                           this discriminant disagrees. */
                         float eta = n1 / n2;
                         float k = 1.0 - eta * eta * (1.0 - cos_i * cos_i);
-                        st_rd[sp] = eta * p_rd - (eta * -cos_i + sqrt(k)) * best_n;
+                        refracted = k >= 0.0;
+                        st_rd[sp] = eta * p_rd
+                                  - (eta * -cos_i + sqrt(max(k, 0.0))) * best_n;
                         st_inside[sp] = p_inside ? 0 : 1;
                     } else {
                         st_rd[sp] = p_rd;
                         st_inside[sp] = p_inside;
                     }
-                    st_ro[sp] = p;
-                    st_tp[sp] = tp;
-                    st_depth[sp] = p_depth + 1;
-                    sp++;
+                    if (refracted) {
+                        st_ro[sp] = p;
+                        st_tp[sp] = tp;
+                        st_depth[sp] = p_depth + 1;
+                        sp++;
+                    }
                 }
             }
             reflect_tint += float3(1, 1, 1) * (transmit * r);
@@ -370,6 +401,25 @@ float3 trace(float3 ro, float3 rd) {
         }
     }
     return color;
+}
+
+/* holo_grating_order: the conical/off-plane vector grating equation. The
+   groove component is conserved, the dispersion component picks up
+   m lambda/d, the normal component rebalances; m = 0 is exact specular.
+   Returns false when the order is evanescent. */
+bool grating_order(float3 d, float3 n, float3 groove, float m_lambda_over_d,
+                   out float3 outdir) {
+    outdir = float3(0, 0, 0);
+    float3 q = cross(groove, n);
+    float alpha = dot(d, q) + m_lambda_over_d;
+    float beta = dot(d, groove);
+    float rem = 1.0 - alpha * alpha - beta * beta;
+    /* NaN-safe: written as !(rem > 0) so a NaN from a speculated 0/0 --
+       fxc runs both sides of divergent branches -- reads as evanescent
+       instead of as a propagating NaN direction. */
+    if (!(rem > 0.0)) return false;
+    outdir = q * alpha + groove * beta + n * sqrt(rem);
+    return true;
 }
 
 /* polar.c ported: the detector-row Stokes ops. srow' = srow * M. */
@@ -425,138 +475,206 @@ float3 initial_frame(float3 dir) {
     return normalize(f);
 }
 
-/* holo_trace_lambda: the same walk carrying one wavelength as a
-   detector-row Stokes accumulator plus its transverse frame; every
-   interface is a Mueller matrix in its own basis. Caps, push order and
-   culls match cpu_trace.c exactly. */
+/* holo_trace_lambda: CHAIN + FORK. Each popped ray walks as a chain --
+   every surface continues IN PLACE (reflection off glass and mirrors,
+   transmission through filters, the current order off a grating) and
+   forks AT MOST ONE side branch onto the stack (glass's transmitted ray,
+   a grating's next-order revisit). One push per interaction is a hard
+   ceiling: fxc corrupts the stack arrays when any single branch pushes
+   twice. Caps, culls and push order match cpu_trace.c exactly. */
 float trace_lambda(float3 ro, float3 rd, float lambda_um) {
     float3 st_ro[16]; float3 st_rd[16];
-    float4 st_srow[16]; float3 st_frame[16];
+    float st_si[16]; float st_sq[16]; float st_su[16]; float st_sv[16];
+    float3 st_frame[16];
     int st_inside[16]; int st_depth[16];
     int sp = 0, processed = 0;
     float intensity = 0.0;
 
     st_ro[0] = ro; st_rd[0] = rd;
-    st_srow[0] = float4(1, 0, 0, 0);
+    st_si[0] = 1; st_sq[0] = 0; st_su[0] = 0; st_sv[0] = 0;
     st_frame[0] = initial_frame(rd);
     st_inside[0] = 0; st_depth[0] = 0;
     sp = 1;
 
     [loop] while (sp > 0 && processed < MAX_RAYS) {
-        processed++;
         sp--;
         float3 p_ro = st_ro[sp]; float3 p_rd = st_rd[sp];
-        float4 p_srow = st_srow[sp]; float3 p_frame = st_frame[sp];
-        int p_inside = st_inside[sp]; int p_depth = st_depth[sp];
+        float4 p_srow = float4(st_si[sp], st_sq[sp], st_su[sp], st_sv[sp]);
+        float3 p_frame = st_frame[sp];
+        int p_inside = st_inside[sp];
+        /* Depth in the low bits, the grating order index in the high. */
+        int p_depth = st_depth[sp] & 0xFF;
+        int p_order = st_depth[sp] >> 8;
 
-        float best_t; float3 best_n; float3 albedo;
-        float mirror; float transmit; float ior; float disperse; bool volume;
-        if (!nearest_hit(p_ro, p_rd, best_t, best_n, albedo, mirror,
-                         transmit, ior, disperse, volume)) {
-            intensity += p_srow.x * albedo_at(sky(p_rd), lambda_um);
-            continue;
-        }
-        float3 p = p_ro + best_t * p_rd;
+        [loop] while (processed < MAX_RAYS) {
+            processed++;
 
-        int rect_i = volume ? -1 : nearest_rect(p_ro, p_rd, best_t);
-        int filter_mode = rect_i >= 0 ? (int)rect_filter[rect_i].x : 0;
-
-        if (filter_mode != 0) {
-            if (p_depth >= MAX_BOUNCE || sp >= STACK) continue;
-            float3 in_pane = rect_filter[rect_i].yzw;
-            float3 axis_t = in_pane - p_rd * dot(in_pane, p_rd);
-            float3 axis = dot(axis_t, axis_t) < 1e-6 ? p_frame
-                                                     : normalize(axis_t);
-            float c2, s2;
-            frame_rot(p_frame, axis, p_rd, c2, s2);
-            float4 s = srow_rotate(p_srow, c2, s2);
-            if (filter_mode == 1) {
-                s = srow_polarizer(s);
-            } else {
-                float d = rect_glass[rect_i].w * 0.5893 / lambda_um;
-                s = srow_mueller(s, 1, 0, cos(d), sin(d));
+            float best_t; float3 best_n; float3 albedo;
+            float mirror; float transmit; float ior; float disperse;
+            bool volume;
+            int rect_i;
+            if (!nearest_hit(p_ro, p_rd, best_t, best_n, albedo, mirror,
+                             transmit, ior, disperse, volume, rect_i)) {
+                intensity += p_srow.x * albedo_at(sky(p_rd), lambda_um);
+                break;
             }
-            if (s.x > MIN_TP) {
-                st_ro[sp] = p; st_rd[sp] = p_rd;
-                st_srow[sp] = s; st_frame[sp] = axis;
-                st_inside[sp] = p_inside; st_depth[sp] = p_depth + 1;
-                sp++;
-            }
-            continue;
-        }
+            float3 p = p_ro + best_t * p_rd;
 
-        float matte = 1.0 - mirror - transmit;
-        if (matte > 0.0) {
-            float diffuse = max(dot(best_n, sun_dir), 0.0);
-            if (diffuse > 0.0 && sun_blocked(p)) diffuse = 0.0;
-            float lambert = albedo_at(albedo, lambda_um)
-                          * (AMBIENT + (1.0 - AMBIENT) * diffuse);
-            intensity += p_srow.x * lambert * matte;
-        }
-
-        if (p_depth >= MAX_BOUNCE) continue;
-
-        float3 s_hat = cross(p_rd, best_n);
-        float c2 = 1.0, s2 = 0.0;
-        if (dot(s_hat, s_hat) > 1e-6) {
-            s_hat = normalize(s_hat);
-            frame_rot(p_frame, s_hat, p_rd, c2, s2);
-        } else {
-            s_hat = p_frame;
-        }
-        float4 srow_sp = srow_rotate(p_srow, c2, s2);
-
-        float mtint = albedo_at(albedo, lambda_um) * mirror;
-        float ra = mtint, rb = 0.0, rc = mtint, rdd = 0.0;
-
-        if (transmit > 0.0) {
-            float n_glass = ior_at(ior, disperse, lambda_um);
-            float cos_i = -dot(best_n, p_rd);
-            float n1 = p_inside ? n_glass : 1.0;
-            float n2 = p_inside ? 1.0 : n_glass;
-            float rs, rp, ts, tpa, f, delta;
-            bool tir = fresnel_amp(cos_i, n1, n2, rs, rp, ts, tpa, f, delta);
-
-            if (!tir) {
-                float k = albedo_at(albedo, lambda_um) * transmit;
-                float4 st = srow_mueller(srow_sp,
-                        k * 0.5 * f * (ts * ts + tpa * tpa),
-                        k * 0.5 * f * (ts * ts - tpa * tpa),
-                        k * f * ts * tpa, 0.0);
-                if (st.x > MIN_TP && sp < STACK) {
-                    if (volume) {
-                        float eta = n1 / n2;
-                        float kk = 1.0 - eta * eta * (1.0 - cos_i * cos_i);
-                        st_rd[sp] = eta * p_rd
-                                  - (eta * -cos_i + sqrt(kk)) * best_n;
-                        st_inside[sp] = p_inside ? 0 : 1;
-                    } else {
-                        st_rd[sp] = p_rd;
-                        st_inside[sp] = p_inside;
-                    }
-                    st_ro[sp] = p;
-                    st_srow[sp] = st; st_frame[sp] = s_hat;
-                    st_depth[sp] = p_depth + 1;
+            /* A grating: the chain follows THIS visit's order, the fork
+               revisits the surface for the next. Constants come from the
+               grating's SCALAR slot, matched by rect index. */
+            if (rect_i >= 0 && (rect_i == (int)grat0_groove_idx.w ||
+                                rect_i == (int)grat1_groove_idx.w)) {
+                if (p_depth >= MAX_BOUNCE) break;
+                bool slot0 = rect_i == (int)grat0_groove_idx.w;
+                float3 groove = slot0 ? grat0_groove_idx.xyz
+                                      : grat1_groove_idx.xyz;
+                float period = max(slot0 ? grat0_period_w.x
+                                         : grat1_period_w.x, 1e-6);
+                float4 wts = slot0
+                    ? float4(grat0_period_w.yzw, grat_w2.x)
+                    : float4(grat1_period_w.yzw, grat_w2.y);
+                if (p_order < 3 && sp < STACK) {
+                    st_ro[sp] = p_ro; st_rd[sp] = p_rd;
+                    st_si[sp] = p_srow.x; st_sq[sp] = p_srow.y;
+                    st_su[sp] = p_srow.z; st_sv[sp] = p_srow.w;
+                    st_frame[sp] = p_frame;
+                    st_inside[sp] = p_inside;
+                    st_depth[sp] = p_depth | ((p_order + 1) << 8);
                     sp++;
                 }
-                ra += transmit * 0.5 * (rs * rs + rp * rp);
-                rb += transmit * 0.5 * (rs * rs - rp * rp);
-                rc += transmit * rs * rp;
-            } else {
-                ra += transmit;
-                rc += transmit * cos(delta);
-                rdd += transmit * sin(delta);
+                float m_f = p_order == 0 ? -1.0 : p_order == 1 ? 0.0
+                          : p_order == 2 ? 1.0 : 2.0;
+                float w = p_order == 0 ? wts.x : p_order == 1 ? wts.y
+                        : p_order == 2 ? wts.z : wts.w;
+                float3 outdir;
+                if (!grating_order(p_rd, best_n, groove,
+                                   m_f * lambda_um / period, outdir)) {
+                    break;   /* this order is evanescent */
+                }
+                float4 gs = p_srow * w;
+                if (gs.x <= MIN_TP) break;
+                p_ro = p; p_rd = outdir;
+                p_srow = gs;
+                p_frame = initial_frame(outdir);
+                p_depth++;
+                p_order = 0;
+                continue;
             }
-        }
 
-        float4 sr = srow_mueller(srow_sp, ra, rb, rc, rdd);
-        if (sr.x > MIN_TP && sp < STACK) {
-            st_ro[sp] = p;
-            st_rd[sp] = reflect(p_rd, best_n);
-            st_srow[sp] = sr; st_frame[sp] = s_hat;
-            st_inside[sp] = p_inside;
-            st_depth[sp] = p_depth + 1;
-            sp++;
+            /* Filters: rotate into the pane's axis, apply its Mueller,
+               carry the chain on straight. */
+            int filter_mode = rect_i >= 0 ? (int)rect_filter[rect_i].x : 0;
+            if (filter_mode == 1 || filter_mode == 2) {
+                if (p_depth >= MAX_BOUNCE) break;
+                float3 in_pane = rect_filter[rect_i].yzw;
+                float3 axis_t = in_pane - p_rd * dot(in_pane, p_rd);
+                float3 axis = dot(axis_t, axis_t) < 1e-6 ? p_frame
+                                                         : normalize(axis_t);
+                float c2, s2;
+                frame_rot(p_frame, axis, p_rd, c2, s2);
+                float4 fs = srow_rotate(p_srow, c2, s2);
+                if (filter_mode == 1) {
+                    fs = srow_polarizer(fs);
+                } else {
+                    float d = rect_glass[rect_i].w * 0.5893 / lambda_um;
+                    fs = srow_mueller(fs, 1, 0, cos(d), sin(d));
+                }
+                if (fs.x <= MIN_TP) break;
+                p_ro = p;
+                p_srow = fs;
+                p_frame = axis;
+                p_depth++;
+                p_order = 0;
+                continue;
+            }
+
+            float matte = 1.0 - mirror - transmit;
+            if (matte > 0.0) {
+                float diffuse = max(dot(best_n, sun_dir), 0.0);
+                if (diffuse > 0.0 && sun_blocked(p)) diffuse = 0.0;
+                float lambert = albedo_at(albedo, lambda_um)
+                              * (AMBIENT + (1.0 - AMBIENT) * diffuse);
+                intensity += p_srow.x * lambert * matte;
+            }
+
+            if (p_depth >= MAX_BOUNCE) break;
+
+            float3 s_hat = cross(p_rd, best_n);
+            float c2 = 1.0, s2 = 0.0;
+            if (dot(s_hat, s_hat) > 1e-6) {
+                s_hat = normalize(s_hat);
+                frame_rot(p_frame, s_hat, p_rd, c2, s2);
+            } else {
+                s_hat = p_frame;
+            }
+            float4 srow_sp = srow_rotate(p_srow, c2, s2);
+
+            float mtint = albedo_at(albedo, lambda_um) * mirror;
+            float ra = mtint, rb = 0.0, rc = mtint, rdd = 0.0;
+
+            if (transmit > 0.0) {
+                float n_glass = ior_at(ior, disperse, lambda_um);
+                float cos_i = -dot(best_n, p_rd);
+                float n1 = p_inside ? n_glass : 1.0;
+                float n2 = p_inside ? 1.0 : n_glass;
+                float rs, rp, ts, tpa, f, delta;
+                bool tir = fresnel_amp(cos_i, n1, n2, rs, rp, ts, tpa,
+                                       f, delta);
+
+                if (!tir) {
+                    /* The fork: the transmitted ray. */
+                    float k = albedo_at(albedo, lambda_um) * transmit;
+                    float4 st = srow_mueller(srow_sp,
+                            k * 0.5 * f * (ts * ts + tpa * tpa),
+                            k * 0.5 * f * (ts * ts - tpa * tpa),
+                            k * f * ts * tpa, 0.0);
+                    if (st.x > MIN_TP && sp < STACK) {
+                        bool refracted = true;
+                        if (volume) {
+                            /* Checked like the CPU: at the razor edge of
+                               the critical angle Fresnel can say "not TIR"
+                               while this discriminant disagrees. */
+                            float eta = n1 / n2;
+                            float kk = 1.0 - eta * eta
+                                     * (1.0 - cos_i * cos_i);
+                            refracted = kk >= 0.0;
+                            st_rd[sp] = eta * p_rd
+                                      - (eta * -cos_i + sqrt(max(kk, 0.0)))
+                                        * best_n;
+                            st_inside[sp] = p_inside ? 0 : 1;
+                        } else {
+                            st_rd[sp] = p_rd;
+                            st_inside[sp] = p_inside;
+                        }
+                        if (refracted) {
+                            st_ro[sp] = p;
+                            st_si[sp] = st.x; st_sq[sp] = st.y;
+                            st_su[sp] = st.z; st_sv[sp] = st.w;
+                            st_frame[sp] = s_hat;
+                            st_depth[sp] = p_depth + 1;
+                            sp++;
+                        }
+                    }
+                    ra += transmit * 0.5 * (rs * rs + rp * rp);
+                    rb += transmit * 0.5 * (rs * rs - rp * rp);
+                    rc += transmit * rs * rp;
+                } else {
+                    ra += transmit;
+                    rc += transmit * cos(delta);
+                    rdd += transmit * sin(delta);
+                }
+            }
+
+            /* The chain: the reflected ray. */
+            float4 sr = srow_mueller(srow_sp, ra, rb, rc, rdd);
+            if (sr.x <= MIN_TP) break;
+            p_ro = p;
+            p_rd = reflect(p_rd, best_n);
+            p_srow = sr;
+            p_frame = s_hat;
+            p_depth++;
+            p_order = 0;
         }
     }
     return intensity;

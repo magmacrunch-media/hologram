@@ -377,6 +377,31 @@ static void test_solar_furnace(void) {
     check_close(unlit, 0.4f, "off the focus, plain sky in the mirror");
 }
 
+static void test_grating_orders(void) {
+    printf("trace: a grating fans light into its orders\n");
+    /* Normal incidence on a 1um grating under a uniform white sky, every
+       order weighted 0.2. At 550nm the first orders leave at +-33 degrees
+       and the second would need sin = 1.1 -- evanescent -- so exactly
+       three branches reach the sky: 0.6, by hand. At 450nm the second
+       order squeaks out at sin = 0.9 and the answer rises to 0.8. An
+       order appearing as the wavelength shortens is the grating equation
+       audited by addition. */
+    HoloScene s = {
+        .rects = { { .corner = hv3(-3, -3, 0), .edge_u = hv3(6, 0, 0),
+                     .edge_v = hv3(0, 6, 0), .albedo = hv3(1, 1, 1),
+                     .grating_period = 1.0f,
+                     .order_w = { 0.2f, 0.2f, 0.2f, 0.2f } } },
+        .rect_count = 1,
+        .sun_dir = hv3(0, 1, 0),
+        .horizon = hv3(1, 1, 1), .zenith = hv3(1, 1, 1),
+    };
+    HoloRay r = { .origin = hv3(0.3f, 0.2f, 5), .dir = hv3(0, 0, -1) };
+    check_close(holo_trace_lambda(&s, r, 0.55f), 0.6f,
+                "three orders propagate at 550nm");
+    check_close(holo_trace_lambda(&s, r, 0.45f), 0.8f,
+                "the second order joins at 450nm");
+}
+
 int main(void) {
     test_camera();
     test_shading();
@@ -392,5 +417,6 @@ int main(void) {
     test_polarizers_in_scene();
     test_waveplate_colors();
     test_solar_furnace();
+    test_grating_orders();
     return report();
 }
