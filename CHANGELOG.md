@@ -45,6 +45,17 @@ later milestone builds on.
   the depth cap (trapped light returns black, not a hang).
 - **The oracle as a callable** — `source/oracle.c` wraps the GPU-vs-CPU frame
   diff behind one function, so every example's --diff mode is three lines.
+- **Glass** — `holo_fresnel()` in linalg.c is the real pair of Fresnel
+  equations, s and p separately (M6's Stokes vectors will want them apart),
+  held by tests to 4% at normal incidence, a vanishing p at Brewster's angle,
+  reciprocity across the interface, and total reflection past the critical
+  angle. Materials gain transmit and ior; spheres refract as volumes (rays
+  bend in, bend out, and can be trapped), rects transmit as thin panes.
+  The mirror walk becomes a small deterministic ray stack -- glass forks
+  light -- with fixed caps, push order and cull threshold mirrored exactly
+  in the shader, so the CPU and GPU drop the same branches. A trace test
+  sums a glass ball's branch weights to the hand-computed 0.998464: glass
+  neither makes nor eats light.
 
 ### Examples
 

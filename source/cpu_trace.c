@@ -2,11 +2,19 @@
 #include <math.h>
 #include "cpu_trace.h"
 
-/* What the nearest surface along the ray is made of. Shading never asks
-   WHICH surface answered -- only where it is, which way it faces, and what
-   it is made of, so that is all this returns. */
+/* Everything shading needs to know about the nearest surface: where it is,
+   which way it faces, what it is made of, and whether its glass is a volume
+   (spheres) or a thin pane (rects). Shading never asks WHICH surface. */
+typedef struct {
+    HoloV3 albedo;
+    float  mirror;
+    float  transmit;
+    float  ior;
+    int    volume;
+} HoloSurface;
+
 static int nearest_hit(const HoloScene *scene, HoloRay ray, HoloHit *hit,
-                       HoloV3 *albedo, float *mirror) {
+                       HoloSurface *surf) {
     int found = 0;
     HoloHit best = { .t = 1e30f };
     HoloHit h;
@@ -15,8 +23,11 @@ static int nearest_hit(const HoloScene *scene, HoloRay ray, HoloHit *hit,
         if (holo_ray_sphere(ray, scene->spheres[i].center,
                             scene->spheres[i].radius, &h) && h.t < best.t) {
             best = h;
-            *albedo = scene->spheres[i].albedo;
-            *mirror = scene->spheres[i].mirror;
+            surf->albedo = scene->spheres[i].albedo;
+            surf->mirror = scene->spheres[i].mirror;
+            surf->transmit = scene->spheres[i].transmit;
+            surf->ior = scene->spheres[i].ior;
+            surf->volume = 1;
             found = 1;
         }
     }
@@ -24,8 +35,11 @@ static int nearest_hit(const HoloScene *scene, HoloRay ray, HoloHit *hit,
         if (holo_ray_rect(ray, scene->rects[i].corner, scene->rects[i].edge_u,
                           scene->rects[i].edge_v, &h) && h.t < best.t) {
             best = h;
-            *albedo = scene->rects[i].albedo;
-            *mirror = scene->rects[i].mirror;
+            surf->albedo = scene->rects[i].albedo;
+            surf->mirror = scene->rects[i].mirror;
+            surf->transmit = scene->rects[i].transmit;
+            surf->ior = scene->rects[i].ior;
+            surf->volume = 0;
             found = 1;
         }
     }
@@ -37,8 +51,11 @@ static int nearest_hit(const HoloScene *scene, HoloRay ray, HoloHit *hit,
            toward zero and would double the two cells either side of each
            axis. */
         int cell = (int)floorf(h.point.x) + (int)floorf(h.point.z);
-        *albedo = (cell & 1) ? scene->floor_b : scene->floor_a;
-        *mirror = scene->floor_mirror;
+        surf->albedo = (cell & 1) ? scene->floor_b : scene->floor_a;
+        surf->mirror = scene->floor_mirror;
+        surf->transmit = 0.0f;
+        surf->ior = 1.0f;
+        surf->volume = 0;
         found = 1;
     }
     if (found) {
@@ -50,14 +67,19 @@ static int nearest_hit(const HoloScene *scene, HoloRay ray, HoloHit *hit,
 static int sun_blocked(const HoloScene *scene, HoloV3 point) {
     HoloRay shadow = { .origin = point, .dir = scene->sun_dir };
     HoloHit h;
+    /* Mostly-clear glass does not throw a hard shadow -- without caustics
+       (M8's problem) a black disc under a glass sphere would be more wrong
+       than no shadow at all. */
     for (int i = 0; i < scene->sphere_count; i++) {
-        if (holo_ray_sphere(shadow, scene->spheres[i].center,
+        if (scene->spheres[i].transmit <= 0.5f &&
+            holo_ray_sphere(shadow, scene->spheres[i].center,
                             scene->spheres[i].radius, &h)) {
             return 1;
         }
     }
     for (int i = 0; i < scene->rect_count; i++) {
-        if (holo_ray_rect(shadow, scene->rects[i].corner,
+        if (scene->rects[i].transmit <= 0.5f &&
+            holo_ray_rect(shadow, scene->rects[i].corner,
                           scene->rects[i].edge_u, scene->rects[i].edge_v, &h)) {
             return 1;
         }
@@ -71,44 +93,111 @@ static HoloV3 sky(const HoloScene *scene, HoloV3 dir) {
     return hv3_lerp(scene->horizon, scene->zenith, 0.5f * (dir.y + 1.0f));
 }
 
-HoloV3 holo_trace_ray(const HoloScene *scene, HoloRay ray) {
-    /* The mirror walk, iterative because the GPU twin cannot recurse: at
-       each surface the matte share of the light is banked and the mirrored
-       share keeps travelling, tinted by the mirror's own color. When the
-       ray escapes, whatever is still travelling collects the sky. */
+static float max3(HoloV3 v) {
+    float m = v.x > v.y ? v.x : v.y;
+    return m > v.z ? m : v.z;
+}
+
+/* A ray still owed to the image: where it is going, how much of the pixel's
+   light rides on it, whether it is currently inside glass. */
+typedef struct {
+    HoloRay ray;
+    HoloV3  tp;
+    int     inside;
+    int     depth;
+} PathRay;
+
+HoloV3 holo_trace_ray(const HoloScene *scene, HoloRay primary) {
+    /* Glass forks light, mirrors merely redirect it, so the walk is a small
+       LIFO stack of pending rays. Determinism is the contract: fixed caps,
+       a fixed push order (refraction below reflection, so reflections are
+       walked first), and a fixed cull threshold, all mirrored exactly in
+       trace.hlsl -- the two sides must drop the same branches. */
+    PathRay stack[HOLO_STACK];
+    int sp = 0, processed = 0;
     HoloV3 color = hv3(0, 0, 0);
-    HoloV3 throughput = hv3(1, 1, 1);
 
-    for (int bounce = 0; bounce <= HOLO_MAX_BOUNCE; bounce++) {
+    stack[sp++] = (PathRay){ .ray = primary, .tp = hv3(1, 1, 1) };
+
+    while (sp > 0 && processed < HOLO_MAX_RAYS) {
+        processed++;
+        PathRay p = stack[--sp];
+
         HoloHit hit;
-        HoloV3 albedo;
-        float mirror;
-        if (!nearest_hit(scene, ray, &hit, &albedo, &mirror)) {
-            color = hv3_add(color, hv3_mul(throughput, sky(scene, ray.dir)));
-            break;
+        HoloSurface surf;
+        if (!nearest_hit(scene, p.ray, &hit, &surf)) {
+            color = hv3_add(color, hv3_mul(p.tp, sky(scene, p.ray.dir)));
+            continue;
         }
 
-        float diffuse = hv3_dot(hit.normal, scene->sun_dir);
-        if (diffuse < 0.0f) {
-            diffuse = 0.0f;
-        }
-        if (diffuse > 0.0f && sun_blocked(scene, hit.point)) {
-            diffuse = 0.0f;
-        }
-        /* Lambert under one sun, floored by the ambient stand-in: full sun
-           gives exactly the albedo, full shadow exactly HOLO_AMBIENT of it.
-           Only the matte share (1 - mirror) of the surface shades this way. */
-        HoloV3 matte = hv3_scale(albedo,
-                                 HOLO_AMBIENT + (1.0f - HOLO_AMBIENT) * diffuse);
-        color = hv3_add(color, hv3_mul(throughput,
-                                       hv3_scale(matte, 1.0f - mirror)));
-        if (mirror <= 0.0f) {
-            break;
+        /* The matte share: Lambert under one sun, floored by the ambient
+           stand-in -- full sun gives exactly the albedo, full shadow exactly
+           HOLO_AMBIENT of it. */
+        float matte = 1.0f - surf.mirror - surf.transmit;
+        if (matte > 0.0f) {
+            float diffuse = hv3_dot(hit.normal, scene->sun_dir);
+            if (diffuse < 0.0f) {
+                diffuse = 0.0f;
+            }
+            if (diffuse > 0.0f && sun_blocked(scene, hit.point)) {
+                diffuse = 0.0f;
+            }
+            HoloV3 lambert = hv3_scale(surf.albedo,
+                                       HOLO_AMBIENT + (1.0f - HOLO_AMBIENT) * diffuse);
+            color = hv3_add(color, hv3_mul(p.tp, hv3_scale(lambert, matte)));
         }
 
-        throughput = hv3_mul(throughput, hv3_scale(albedo, mirror));
-        ray.origin = hit.point;
-        ray.dir = hv3_reflect(ray.dir, hit.normal);
+        if (p.depth >= HOLO_MAX_BOUNCE) {
+            continue;
+        }
+
+        /* The glass share splits by Fresnel: an untinted reflection and a
+           refraction tinted by the glass's color. The metallic mirror share
+           reflects along the same direction, tinted by albedo, so the two
+           reflections travel as one ray. */
+        HoloV3 reflect_tint = hv3_scale(surf.albedo, surf.mirror);
+        if (surf.transmit > 0.0f) {
+            float cos_i = -hv3_dot(hit.normal, p.ray.dir);
+            float n1 = p.inside ? surf.ior : 1.0f;
+            float n2 = p.inside ? 1.0f : surf.ior;
+            float rs, rp;
+            holo_fresnel(cos_i, n1, n2, &rs, &rp);
+            float r = 0.5f * (rs + rp);
+
+            if (r < 1.0f) {
+                HoloV3 tp = hv3_mul(p.tp, hv3_scale(surf.albedo,
+                                                    surf.transmit * (1.0f - r)));
+                if (max3(tp) > HOLO_MIN_TP && sp < HOLO_STACK) {
+                    PathRay t = { .tp = tp, .depth = p.depth + 1 };
+                    if (surf.volume) {
+                        /* In or out through the surface; the ray changes
+                           medium. r < 1 guarantees Snell has an answer. */
+                        hv3_refract(p.ray.dir, hit.normal, n1 / n2, &t.ray.dir);
+                        t.ray.origin = hit.point;
+                        t.inside = !p.inside;
+                    } else {
+                        /* A thin pane: one Fresnel interface, no net bend,
+                           same medium on both sides. */
+                        t.ray = (HoloRay){ .origin = hit.point, .dir = p.ray.dir };
+                        t.inside = p.inside;
+                    }
+                    stack[sp++] = t;
+                }
+            }
+            reflect_tint = hv3_add(reflect_tint,
+                                   hv3_scale(hv3(1, 1, 1), surf.transmit * r));
+        }
+
+        HoloV3 tp = hv3_mul(p.tp, reflect_tint);
+        if (max3(tp) > HOLO_MIN_TP && sp < HOLO_STACK) {
+            stack[sp++] = (PathRay){
+                .ray = { .origin = hit.point,
+                         .dir = hv3_reflect(p.ray.dir, hit.normal) },
+                .tp = tp,
+                .inside = p.inside,
+                .depth = p.depth + 1,
+            };
+        }
     }
     return color;
 }

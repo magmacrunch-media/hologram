@@ -197,6 +197,51 @@ static void test_polished_floor(void) {
     check_close(c.x, 0.6f, "matte share plus mirrored zenith");
 }
 
+static void test_glass_pane(void) {
+    printf("trace: a window splits by Fresnel\n");
+    /* Straight down through a horizontal pane at a red floor: 4% of the
+       light reflects to the zenith, 96% passes to the floor, and the floor
+       is NOT in the pane's shadow -- clear glass throws none. Every number
+       in the expected color is Fresnel at normal incidence. */
+    HoloScene s = {
+        .rects = { { .corner = hv3(-5, 2, -5), .edge_u = hv3(10, 0, 0),
+                     .edge_v = hv3(0, 0, 10), .albedo = hv3(1, 1, 1),
+                     .transmit = 1.0f, .ior = 1.5f } },
+        .rect_count = 1,
+        .has_floor = 1,
+        .floor_a = hv3(1, 0, 0), .floor_b = hv3(1, 0, 0),
+        .sun_dir = hv3(0, 1, 0),
+        .horizon = hv3(1, 1, 1), .zenith = hv3(0.2f, 0.4f, 0.6f),
+    };
+    HoloRay r = { .origin = hv3(0.5f, 5, 0.5f), .dir = hv3(0, -1, 0) };
+    HoloV3 c = holo_trace_ray(&s, r);
+    check_close(c.x, 0.96f + 0.04f * 0.2f, "96% floor + 4% zenith, red");
+    check_close(c.y, 0.04f * 0.4f, "green is all reflection");
+    check_close(c.z, 0.04f * 0.6f, "blue is all reflection");
+}
+
+static void test_glass_sphere_energy(void) {
+    printf("trace: glass neither makes nor eats light\n");
+    /* A clear glass ball under a uniform white sky, shot through the
+       center: every branch ends in sky = 1, so the answer is the sum of
+       the branch weights -- 0.04 off the front, 0.96^2 straight through,
+       0.96 * 0.04 * 0.96 out the front after one internal bounce, and one
+       branch (0.15%) legitimately culled by the throughput floor:
+       0.998464 by hand. Energy is conserved to the cull, or the Fresnel
+       arithmetic is wrong somewhere. */
+    HoloScene s = {
+        .spheres = { { .center = hv3(0, 0, 0), .radius = 1,
+                       .albedo = hv3(1, 1, 1), .transmit = 1.0f,
+                       .ior = 1.5f } },
+        .sphere_count = 1,
+        .sun_dir = hv3(0, 1, 0),
+        .horizon = hv3(1, 1, 1), .zenith = hv3(1, 1, 1),
+    };
+    HoloRay r = { .origin = hv3(0, 0, 5), .dir = hv3(0, 0, -1) };
+    HoloV3 c = holo_trace_ray(&s, r);
+    check_close(c.x, 0.998464f, "the branch weights sum");
+}
+
 int main(void) {
     test_camera();
     test_shading();
@@ -205,5 +250,7 @@ int main(void) {
     test_corridor();
     test_depth_cap();
     test_polished_floor();
+    test_glass_pane();
+    test_glass_sphere_energy();
     return report();
 }

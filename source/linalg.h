@@ -39,4 +39,12 @@ HoloV3 hv3_reflect(HoloV3 d, HoloV3 n);
    reflection, when Snell has no answer and the caller must reflect. */
 int hv3_refract(HoloV3 d, HoloV3 n, float eta, HoloV3 *out);
 
+/* The Fresnel equations -- the real ones, not Schlick's fit. cos_i is the
+   cosine of the incidence angle (positive), n1 the index the light arrives
+   in, n2 the one it meets. Writes the s- and p-polarized power reflectances;
+   past the critical angle both are 1 (TIR reflects everything). Unpolarized
+   light reflects (rs + rp) / 2; keeping the two separate is what lets a
+   Stokes vector ride through this same interface in M6. */
+void holo_fresnel(float cos_i, float n1, float n2, float *rs, float *rp);
+
 #endif

@@ -34,6 +34,8 @@ void holo_gpu_scene_fill(HoloGpuScene *gpu, const HoloScene *scene,
         gpu->sph_center_radius[i][3] = scene->spheres[i].radius;
         put3(gpu->sph_albedo_mirror[i], scene->spheres[i].albedo);
         gpu->sph_albedo_mirror[i][3] = scene->spheres[i].mirror;
+        gpu->sph_glass[i][0] = scene->spheres[i].transmit;
+        gpu->sph_glass[i][1] = scene->spheres[i].ior;
     }
     for (int i = 0; i < scene->rect_count; i++) {
         put3(gpu->rect_corner_mirror[i], scene->rects[i].corner);
@@ -41,5 +43,7 @@ void holo_gpu_scene_fill(HoloGpuScene *gpu, const HoloScene *scene,
         put3(gpu->rect_edge_u[i], scene->rects[i].edge_u);
         put3(gpu->rect_edge_v[i], scene->rects[i].edge_v);
         put3(gpu->rect_albedo[i], scene->rects[i].albedo);
+        gpu->rect_glass[i][0] = scene->rects[i].transmit;
+        gpu->rect_glass[i][1] = scene->rects[i].ior;
     }
 }

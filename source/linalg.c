@@ -33,6 +33,21 @@ HoloV3 hv3_reflect(HoloV3 d, HoloV3 n) {
     return hv3_sub(d, hv3_scale(n, 2.0f * hv3_dot(d, n)));
 }
 
+void holo_fresnel(float cos_i, float n1, float n2, float *rs, float *rp) {
+    float sin_i = sqrtf(1.0f - cos_i * cos_i);
+    float sin_t = (n1 / n2) * sin_i;
+    if (sin_t >= 1.0f) {
+        *rs = 1.0f;   /* total internal reflection: the interface is a mirror */
+        *rp = 1.0f;
+        return;
+    }
+    float cos_t = sqrtf(1.0f - sin_t * sin_t);
+    float rs_amp = (n1 * cos_i - n2 * cos_t) / (n1 * cos_i + n2 * cos_t);
+    float rp_amp = (n1 * cos_t - n2 * cos_i) / (n1 * cos_t + n2 * cos_i);
+    *rs = rs_amp * rs_amp;
+    *rp = rp_amp * rp_amp;
+}
+
 int hv3_refract(HoloV3 d, HoloV3 n, float eta, HoloV3 *out) {
     /* k is cos^2 of the transmitted angle by Snell; when it goes negative the
        transmitted angle would need sin > 1, which is TIR by definition. */

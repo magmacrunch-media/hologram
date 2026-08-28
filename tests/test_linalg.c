@@ -78,9 +78,42 @@ static void test_refract(void) {
     check_int(hv3_refract(d, n, 1.5f, &t), 0, "43 deg is trapped: TIR");
 }
 
+static void test_fresnel(void) {
+    printf("linalg: the Fresnel equations\n");
+    float rs, rp;
+
+    /* Normal incidence on n = 1.5 glass: both polarizations reflect exactly
+       ((n1 - n2) / (n1 + n2))^2 = 4%. */
+    holo_fresnel(1.0f, 1.0f, 1.5f, &rs, &rp);
+    check_close(rs, 0.04f, "normal incidence rs");
+    check_close(rp, 0.04f, "normal incidence rp");
+
+    /* Brewster's angle, atan(1.5) = 56.31 degrees: the p-polarization
+       vanishes -- the reflection is perfectly polarized. rs works out to
+       0.1479 there, so unpolarized light reflects about 7.4%. */
+    float brewster = atanf(1.5f);
+    holo_fresnel(cosf(brewster), 1.0f, 1.5f, &rs, &rp);
+    check_close(rp, 0.0f, "p vanishes at Brewster");
+    check_close(rs, 0.1479f, "s at Brewster");
+
+    /* Reciprocity: the same interface crossed the other way at the paired
+       Snell angle reflects identically. */
+    float theta_t = asinf(sinf(brewster) / 1.5f);
+    float rs2, rp2;
+    holo_fresnel(cosf(theta_t), 1.5f, 1.0f, &rs2, &rp2);
+    check_close(rs2, rs, "reciprocal rs");
+    check_close(rp2, 0.0f, "reciprocal rp");
+
+    /* Past the critical angle from the dense side, everything reflects. */
+    holo_fresnel(cosf(43.0f * 3.14159265f / 180), 1.5f, 1.0f, &rs, &rp);
+    check_close(rs, 1.0f, "TIR rs");
+    check_close(rp, 1.0f, "TIR rp");
+}
+
 int main(void) {
     test_arithmetic();
     test_reflect();
     test_refract();
+    test_fresnel();
     return report();
 }

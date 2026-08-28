@@ -21,15 +21,20 @@ cbuffer params : register(b0) {
     float3 floor_b;   float pad_c;
     float4 sph_center_radius[8];
     float4 sph_albedo_mirror[8];
+    float4 sph_glass[8];
     float4 rect_corner_mirror[8];
     float4 rect_edge_u[8];
     float4 rect_edge_v[8];
     float4 rect_albedo[8];
+    float4 rect_glass[8];
 };
 
 static const float T_MIN = 1e-3;      /* HOLO_T_MIN */
 static const float AMBIENT = 0.1;     /* HOLO_AMBIENT */
 static const int   MAX_BOUNCE = 16;   /* HOLO_MAX_BOUNCE */
+static const int   MAX_RAYS = 32;     /* HOLO_MAX_RAYS */
+static const int   STACK = 16;        /* HOLO_STACK */
+static const float MIN_TP = 0.002;    /* HOLO_MIN_TP */
 
 /* holo_ray_sphere. Writes t and the normal on the arriving side. */
 bool ray_sphere(float3 ro, float3 rd, float3 center, float radius,
@@ -77,13 +82,31 @@ bool ray_floor(float3 ro, float3 rd, out float t) {
     return t > T_MIN;
 }
 
-/* nearest_hit: where, which way it faces, what it is made of. */
+/* holo_fresnel: the real equations, s and p separately. */
+void fresnel(float cos_i, float n1, float n2, out float rs, out float rp) {
+    float sin_i = sqrt(1.0 - cos_i * cos_i);
+    float sin_t = (n1 / n2) * sin_i;
+    if (sin_t >= 1.0) {
+        rs = 1.0; rp = 1.0;
+        return;
+    }
+    float cos_t = sqrt(1.0 - sin_t * sin_t);
+    float rs_amp = (n1 * cos_i - n2 * cos_t) / (n1 * cos_i + n2 * cos_t);
+    float rp_amp = (n1 * cos_t - n2 * cos_i) / (n1 * cos_t + n2 * cos_i);
+    rs = rs_amp * rs_amp;
+    rp = rp_amp * rp_amp;
+}
+
+/* nearest_hit: where, which way it faces, what it is made of, and whether
+   its glass is a volume (spheres) or a thin pane (rects). */
 bool nearest_hit(float3 ro, float3 rd,
                  out float best_t, out float3 best_n,
-                 out float3 albedo, out float mirror) {
+                 out float3 albedo, out float mirror,
+                 out float transmit, out float ior, out bool volume) {
     bool found = false;
     best_t = 1e30; best_n = float3(0, 0, 0);
     albedo = float3(0, 0, 0); mirror = 0;
+    transmit = 0; ior = 1; volume = false;
 
     float t; float3 n;
     for (int i = 0; i < (int)sphere_count; i++) {
@@ -92,6 +115,9 @@ bool nearest_hit(float3 ro, float3 rd,
             best_t = t; best_n = n;
             albedo = sph_albedo_mirror[i].xyz;
             mirror = sph_albedo_mirror[i].w;
+            transmit = sph_glass[i].x;
+            ior = sph_glass[i].y;
+            volume = true;
             found = true;
         }
     }
@@ -102,6 +128,9 @@ bool nearest_hit(float3 ro, float3 rd,
             best_t = t; best_n = n;
             albedo = rect_albedo[j].xyz;
             mirror = rect_corner_mirror[j].w;
+            transmit = rect_glass[j].x;
+            ior = rect_glass[j].y;
+            volume = false;
             found = true;
         }
     }
@@ -112,22 +141,26 @@ bool nearest_hit(float3 ro, float3 rd,
         int cell = (int)floor(p.x) + (int)floor(p.z);
         albedo = (cell & 1) ? floor_b : floor_a;
         mirror = floor_mirror;
+        transmit = 0; ior = 1; volume = false;
         found = true;
     }
     return found;
 }
 
-/* sun_blocked: any sphere or panel between the point and the sun. */
+/* sun_blocked: opaque spheres or panels between the point and the sun.
+   Mostly-clear glass throws no hard shadow (caustics are M8's problem). */
 bool sun_blocked(float3 p) {
     float t; float3 n;
     for (int i = 0; i < (int)sphere_count; i++) {
-        if (ray_sphere(p, sun_dir, sph_center_radius[i].xyz,
+        if (sph_glass[i].x <= 0.5 &&
+            ray_sphere(p, sun_dir, sph_center_radius[i].xyz,
                        sph_center_radius[i].w, t, n)) {
             return true;
         }
     }
     for (int j = 0; j < (int)rect_count; j++) {
-        if (ray_rect(p, sun_dir, rect_corner_mirror[j].xyz,
+        if (rect_glass[j].x <= 0.5 &&
+            ray_rect(p, sun_dir, rect_corner_mirror[j].xyz,
                      rect_edge_u[j].xyz, rect_edge_v[j].xyz, t, n)) {
             return true;
         }
@@ -139,28 +172,84 @@ float3 sky(float3 dir) {
     return lerp(horizon, zenith, 0.5 * (dir.y + 1.0));
 }
 
-/* holo_trace_ray: the mirror walk. */
+/* holo_trace_ray: the stack walk, matching cpu_trace.c's caps, push order
+   (refraction below reflection) and cull threshold exactly -- the two sides
+   must drop the same branches. */
 float3 trace(float3 ro, float3 rd) {
+    float3 st_ro[16]; float3 st_rd[16]; float3 st_tp[16];
+    int st_inside[16]; int st_depth[16];
+    int sp = 0, processed = 0;
     float3 color = float3(0, 0, 0);
-    float3 throughput = float3(1, 1, 1);
 
-    for (int bounce = 0; bounce <= MAX_BOUNCE; bounce++) {
-        float best_t; float3 best_n; float3 albedo; float mirror;
-        if (!nearest_hit(ro, rd, best_t, best_n, albedo, mirror)) {
-            color += throughput * sky(rd);
-            break;
+    st_ro[0] = ro; st_rd[0] = rd; st_tp[0] = float3(1, 1, 1);
+    st_inside[0] = 0; st_depth[0] = 0;
+    sp = 1;
+
+    [loop] while (sp > 0 && processed < MAX_RAYS) {
+        processed++;
+        sp--;
+        float3 p_ro = st_ro[sp]; float3 p_rd = st_rd[sp];
+        float3 p_tp = st_tp[sp];
+        int p_inside = st_inside[sp]; int p_depth = st_depth[sp];
+
+        float best_t; float3 best_n; float3 albedo;
+        float mirror; float transmit; float ior; bool volume;
+        if (!nearest_hit(p_ro, p_rd, best_t, best_n, albedo, mirror,
+                         transmit, ior, volume)) {
+            color += p_tp * sky(p_rd);
+            continue;
         }
-        float3 p = ro + best_t * rd;
+        float3 p = p_ro + best_t * p_rd;
 
-        float diffuse = max(dot(best_n, sun_dir), 0.0);
-        if (diffuse > 0.0 && sun_blocked(p)) diffuse = 0.0;
-        float3 matte = albedo * (AMBIENT + (1.0 - AMBIENT) * diffuse);
-        color += throughput * matte * (1.0 - mirror);
-        if (mirror <= 0.0) break;
+        float matte = 1.0 - mirror - transmit;
+        if (matte > 0.0) {
+            float diffuse = max(dot(best_n, sun_dir), 0.0);
+            if (diffuse > 0.0 && sun_blocked(p)) diffuse = 0.0;
+            float3 lambert = albedo * (AMBIENT + (1.0 - AMBIENT) * diffuse);
+            color += p_tp * lambert * matte;
+        }
 
-        throughput *= albedo * mirror;
-        ro = p;
-        rd = reflect(rd, best_n);
+        if (p_depth >= MAX_BOUNCE) continue;
+
+        float3 reflect_tint = albedo * mirror;
+        if (transmit > 0.0) {
+            float cos_i = -dot(best_n, p_rd);
+            float n1 = p_inside ? ior : 1.0;
+            float n2 = p_inside ? 1.0 : ior;
+            float rs, rp;
+            fresnel(cos_i, n1, n2, rs, rp);
+            float r = 0.5 * (rs + rp);
+
+            if (r < 1.0) {
+                float3 tp = p_tp * albedo * (transmit * (1.0 - r));
+                if (max(tp.x, max(tp.y, tp.z)) > MIN_TP && sp < STACK) {
+                    if (volume) {
+                        float eta = n1 / n2;
+                        float k = 1.0 - eta * eta * (1.0 - cos_i * cos_i);
+                        st_rd[sp] = eta * p_rd - (eta * -cos_i + sqrt(k)) * best_n;
+                        st_inside[sp] = p_inside ? 0 : 1;
+                    } else {
+                        st_rd[sp] = p_rd;
+                        st_inside[sp] = p_inside;
+                    }
+                    st_ro[sp] = p;
+                    st_tp[sp] = tp;
+                    st_depth[sp] = p_depth + 1;
+                    sp++;
+                }
+            }
+            reflect_tint += float3(1, 1, 1) * (transmit * r);
+        }
+
+        float3 rtp = p_tp * reflect_tint;
+        if (max(rtp.x, max(rtp.y, rtp.z)) > MIN_TP && sp < STACK) {
+            st_ro[sp] = p;
+            st_rd[sp] = reflect(p_rd, best_n);
+            st_tp[sp] = rtp;
+            st_inside[sp] = p_inside;
+            st_depth[sp] = p_depth + 1;
+            sp++;
+        }
     }
     return color;
 }

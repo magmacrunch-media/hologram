@@ -23,19 +23,36 @@
    pixels wide. The trace returns what it has gathered and stops. */
 #define HOLO_MAX_BOUNCE 16
 
+/* Glass splits light, so the walk keeps a small stack of pending rays
+   instead of a single continuation. The caps bound the work per pixel and
+   make branch-dropping deterministic -- the CPU and GPU drop the exact same
+   branches, which the oracle diff depends on. A branch whose brightest
+   channel falls under HOLO_MIN_TP could move a pixel by less than half a
+   level, so it is not worth following. */
+#define HOLO_MAX_RAYS 32
+#define HOLO_STACK    16
+#define HOLO_MIN_TP   0.002f
+
 /* The fraction of the sun a shadowed point still shows. Not physics yet --
    a stand-in until bounced light exists to fill shadows honestly. */
 #define HOLO_AMBIENT 0.1f
 
-/* mirror = 0 is matte, 1 a pure mirror; between, the surface splits into a
-   Lambert part and a reflected part. A mirror's reflection is tinted by its
-   albedo -- silver is a color too. (Fresnel will make this angle-dependent
-   in M4; a fixed weight is the honest simplification until then.) */
+/* A material is three shares that sum to at most 1: mirror (metallic
+   reflection, tinted by albedo -- silver is a color too), transmit (glass),
+   and the matte remainder (Lambert). Glass brings its own reflection: the
+   Fresnel equations split the transmit share between refraction and an
+   untinted dielectric reflection, angle by angle, so a glass surface goes
+   mirror-like at grazing incidence because physics says so, not because a
+   parameter does. A sphere's glass is a volume (rays bend in and out and can
+   be trapped by TIR); a rect's is a thin pane (direction unchanged, one
+   Fresnel interface -- a window, not a prism). */
 typedef struct {
     HoloV3 center;
     float  radius;
     HoloV3 albedo;
     float  mirror;
+    float  transmit;
+    float  ior;              /* meaningful when transmit > 0 */
 } HoloSphere;
 
 typedef struct {
@@ -43,6 +60,8 @@ typedef struct {
     HoloV3 edge_u, edge_v;   /* lengths are the panel's size */
     HoloV3 albedo;
     float  mirror;
+    float  transmit;
+    float  ior;
 } HoloRect;
 
 typedef struct {

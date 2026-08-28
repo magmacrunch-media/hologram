@@ -27,10 +27,12 @@ typedef struct {
 
     float sph_center_radius[HOLO_MAX_SPHERES][4];   /* xyz center, w radius */
     float sph_albedo_mirror[HOLO_MAX_SPHERES][4];   /* xyz albedo, w mirror */
+    float sph_glass[HOLO_MAX_SPHERES][4];           /* x transmit, y ior */
     float rect_corner_mirror[HOLO_MAX_RECTS][4];    /* xyz corner, w mirror */
     float rect_edge_u[HOLO_MAX_RECTS][4];
     float rect_edge_v[HOLO_MAX_RECTS][4];
     float rect_albedo[HOLO_MAX_RECTS][4];
+    float rect_glass[HOLO_MAX_RECTS][4];            /* x transmit, y ior */
 } HoloGpuScene;
 
 /* Write scene and camera into the block. The camera's aspect is NOT carried:

@@ -30,6 +30,8 @@ cl /nologo /std:c11 /W3 /O2 /DSOKOL_D3D11 /DSOKOL_WIN32_FORCE_MAIN /Fobuild\ /Fe
     examples\m2_gpu\main.c source\display.c source\oracle.c %PURE% || exit /b 1
 cl /nologo /std:c11 /W3 /O2 /DSOKOL_D3D11 /DSOKOL_WIN32_FORCE_MAIN /Fobuild\ /Febuild\m3_mirrors.exe ^
     examples\m3_mirrors\main.c source\display.c source\oracle.c %PURE% || exit /b 1
+cl /nologo /std:c11 /W3 /O2 /DSOKOL_D3D11 /DSOKOL_WIN32_FORCE_MAIN /Fobuild\ /Febuild\m4_glass.exe ^
+    examples\m4_glass\main.c source\display.c source\oracle.c %PURE% || exit /b 1
 exit /b 0
 
 :tests
