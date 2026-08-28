@@ -52,5 +52,10 @@ M9 diffraction gratings.
 
 ## License
 
-[Apache-2.0](LICENSE). Vendored sokol headers keep their zlib licence
-(`external/sokol/LICENSE`).
+[PolyForm Noncommercial 1.0.0](LICENSE) — read it, learn from it, build on
+it, play with it; any noncommercial purpose is permitted, and commercial use
+is reserved to magmacrunch media (ask about a commercial licence). See
+[NOTICE](NOTICE) for the exact boundary. This differs deliberately from
+magmacrunch's Apache-2.0 2D engines: those are infrastructure for anyone;
+hologram is the optics engine under magmacrunch's own games. Vendored sokol
+headers keep their zlib licence (`external/sokol/LICENSE`).

@@ -1,0 +1,43 @@
+hologram
+Copyright 2026 magmacrunch media
+
+
+THE LICENCE
+
+Everything in this repository -- the engine sources, the shaders, the tests,
+the examples, the build files and the documentation -- is licensed under the
+PolyForm Noncommercial License 1.0.0, in the LICENSE file beside this one.
+
+Read it, learn from it, build on it, play with it. Any noncommercial purpose
+is permitted, and that includes personal projects, teaching and research.
+What is not permitted is commercial use: selling the engine or a derivative
+of it, shipping it inside a product, or running it as part of a business.
+For a commercial licence, ask.
+
+This is a change from the Apache License 2.0 that the repository started
+under. Commits made before the relicensing commit remain available under
+Apache 2.0 in the git history; everything from that commit forward is
+PolyForm Noncommercial.
+
+This licence choice differs deliberately from magmacrunch's 2D engines
+(magnolia, adenosine, texastoast), which are Apache 2.0 and meant for
+unrestricted reuse. hologram is the optics engine under magmacrunch's own
+games, and its commercial rights stay with magmacrunch media.
+
+
+WHAT IS RESERVED OUTRIGHT
+
+The hologram name and the magmacrunch names and marks. The engine is named
+after the track "hologram of a dream" by Dag Henderson, a magmacrunch music
+release; the name and the music are not covered by the software licence.
+
+
+THIRD-PARTY COMPONENTS
+
+sokol (sokol_app, sokol_gfx, sokol_glue, sokol_log), by Andre Weissflog,
+vendored under external/sokol/ and used under the zlib licence in
+external/sokol/LICENSE.
+
+source/timestep.c and source/timestep.h are ported from magnolia, and
+tests/harness.h from magnolia's test suite -- Copyright 2026 magmacrunch
+media, originally under Apache 2.0, relicensed here by their author.
