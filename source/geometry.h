@@ -1,0 +1,35 @@
+#ifndef HOLO_GEOMETRY_H
+#define HOLO_GEOMETRY_H
+
+/* Rays against analytic surfaces.
+ *
+ * hologram has no triangles: every surface in a scene is one of these
+ * closed-form shapes, which is why the tracer can afford to be real-time and
+ * why every intersection can be tested against algebra instead of against a
+ * mesh. The family grows milestone by milestone (sphere and plane now; box,
+ * cylinder, prism, conic to follow).
+ */
+
+#include "linalg.h"
+
+/* No hit below this t: a ray leaving a surface must not immediately find the
+   surface it left through float error. */
+#define HOLO_T_MIN 1e-3f
+
+typedef struct {
+    HoloV3 origin;
+    HoloV3 dir;      /* unit */
+} HoloRay;
+
+typedef struct {
+    float  t;        /* distance along the ray, > HOLO_T_MIN */
+    HoloV3 point;
+    HoloV3 normal;   /* unit, out of the surface on the arriving side */
+} HoloHit;
+
+/* Each returns 1 and fills *hit on the nearest intersection past HOLO_T_MIN,
+   or returns 0 leaving *hit alone. */
+int holo_ray_sphere(HoloRay r, HoloV3 center, float radius, HoloHit *hit);
+int holo_ray_plane(HoloRay r, HoloV3 point, HoloV3 normal, HoloHit *hit);
+
+#endif

@@ -12,6 +12,10 @@
 
 #define HOLOGRAM_VERSION "0.1.0"
 
+#include "source/linalg.h"    /* vectors, reflection, Snell's law               */
+#include "source/geometry.h"  /* rays against the analytic surfaces             */
+#include "source/camera.h"    /* the camera as a ray generator                  */
+#include "source/cpu_trace.h" /* the CPU reference tracer: hologram's oracle    */
 #include "source/display.h"   /* window, GPU device, fullscreen tracing surface */
 #include "source/timestep.h"  /* fixed-step accumulator (ported from magnolia)  */
 

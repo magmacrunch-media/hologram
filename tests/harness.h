@@ -44,6 +44,18 @@ static inline void check_str(const char *got, const char *want, const char *what
     }
 }
 
+/* Floats compare against closed-form answers worked out to a few decimals,
+   so the tolerance is absolute and generous next to float epsilon while still
+   far below anything a wrong formula would produce. */
+static inline void check_close(float got, float want, const char *what) {
+    checks++;
+    float diff = got > want ? got - want : want - got;
+    if (diff > 1e-4f) {
+        printf("  FAIL: %s (got %.6f, want %.6f)\n", what, (double)got, (double)want);
+        failures++;
+    }
+}
+
 static inline int report(void) {
     printf("\n%d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;
