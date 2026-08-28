@@ -1,0 +1,47 @@
+#ifndef HOLO_DISPLAY_H
+#define HOLO_DISPLAY_H
+
+/* The window, the GPU device, and the surface the tracer renders through.
+ *
+ * hologram draws every frame the same way: one fullscreen quad, one fragment
+ * shader, uniforms describing the scene and the camera. This module owns that
+ * plumbing -- sokol bring-up, the quad pipeline, and the per-frame uniform
+ * upload -- so the tracer proper (from M2 on) is just the shader source and
+ * the uniform contents.
+ *
+ * The design resolution follows the games: 640x480, scaled to whatever the
+ * window really is. holo_display_uniforms() reports the real pixel size; the
+ * shader letterboxes from there.
+ */
+
+/* Per-frame uniforms every hologram shader receives, in this layout. Keep it
+   16-byte aligned the way constant buffers want; grow it only from the end. */
+typedef struct {
+    float width;    /* framebuffer size in pixels */
+    float height;
+    float time;     /* seconds since the window opened */
+    float _pad;
+} HoloDisplayUniforms;
+
+typedef struct {
+    const char *title;       /* window title */
+    int         width;       /* initial window size; 0 -> 640x480 */
+    int         height;
+    const char *fs_source;   /* fragment shader source for the quad (backend
+                                dialect; HLSL on Windows until sokol-shdc
+                                arrives with M2) */
+} HoloDisplayDesc;
+
+/* Fill in sokol's sapp_desc from ours. sokol owns main(), so a game's entry
+   point is sokol_main() returning holo_display_app(&desc); the callbacks
+   below then run inside the frame loop. */
+struct sapp_desc holo_display_app(const HoloDisplayDesc *desc);
+
+/* The frame body: upload uniforms, draw the quad, present. Called by the
+   internal frame callback; exposed for games that add their own callbacks. */
+void holo_display_frame(void);
+
+/* Seconds since init, as the uniforms will report it. */
+float holo_display_time(void);
+
+#endif
