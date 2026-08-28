@@ -38,6 +38,8 @@ cl /nologo /std:c11 /W3 /O2 /DSOKOL_D3D11 /DSOKOL_WIN32_FORCE_MAIN /Fobuild\ /Fe
     examples\m6_polarization\main.c source\display.c source\oracle.c %PURE% || exit /b 1
 cl /nologo /std:c11 /W3 /O2 /DSOKOL_D3D11 /DSOKOL_WIN32_FORCE_MAIN /Fobuild\ /Febuild\m7_room.exe ^
     examples\m7_room\main.c source\display.c source\oracle.c source\input.c %PURE% || exit /b 1
+cl /nologo /std:c11 /W3 /O2 /DSOKOL_D3D11 /DSOKOL_WIN32_FORCE_MAIN /Fobuild\ /Febuild\m8_furnace.exe ^
+    examples\m8_furnace\main.c source\display.c source\oracle.c source\input.c %PURE% || exit /b 1
 exit /b 0
 
 :tests

@@ -54,6 +54,22 @@ static int nearest_hit(const HoloScene *scene, HoloRay ray, HoloHit *hit,
             found = 1;
         }
     }
+    for (int i = 0; i < scene->dish_count; i++) {
+        if (holo_ray_dish(ray, scene->dishes[i].apex, scene->dishes[i].axis,
+                          scene->dishes[i].curv_r, scene->dishes[i].conic_k,
+                          scene->dishes[i].rim, &h) && h.t < best.t) {
+            best = h;
+            surf->albedo = scene->dishes[i].albedo;
+            surf->mirror = scene->dishes[i].mirror;
+            surf->transmit = 0.0f;
+            surf->ior = 1.0f;
+            surf->disperse = 0.0f;
+            surf->volume = 0;
+            surf->filter = HOLO_FILTER_NONE;
+            surf->rect = -1;
+            found = 1;
+        }
+    }
     if (scene->has_floor &&
         holo_ray_plane(ray, hv3(0, scene->floor_y, 0), hv3(0, 1, 0), &h) &&
         h.t < best.t) {
@@ -105,6 +121,11 @@ static int sun_blocked(const HoloScene *scene, HoloV3 point) {
 }
 
 static HoloV3 sky(const HoloScene *scene, HoloV3 dir) {
+    if (scene->sun_disk_intensity > 0.0f &&
+        hv3_dot(dir, scene->sun_dir) > scene->sun_disk_cos) {
+        float i = scene->sun_disk_intensity;
+        return hv3(i, i, i);
+    }
     return hv3_lerp(scene->horizon, scene->zenith, 0.5f * (dir.y + 1.0f));
 }
 

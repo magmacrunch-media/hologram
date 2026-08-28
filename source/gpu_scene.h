@@ -23,8 +23,8 @@ typedef struct {
     float sun_dir[3];   float floor_y;
     float horizon[3];   float rect_count;
     float zenith[3];    float floor_mirror;
-    float floor_a[3];   float pad_b;
-    float floor_b[3];   float pad_c;
+    float floor_a[3];   float sun_disk_cos;
+    float floor_b[3];   float sun_disk_intensity;
 
     float sph_center_radius[HOLO_MAX_SPHERES][4];   /* xyz center, w radius */
     float sph_albedo_mirror[HOLO_MAX_SPHERES][4];   /* xyz albedo, w mirror */
@@ -35,6 +35,10 @@ typedef struct {
     float rect_albedo[HOLO_MAX_RECTS][4];
     float rect_glass[HOLO_MAX_RECTS][4];            /* x transmit, y ior, z disperse, w retard */
     float rect_filter[HOLO_MAX_RECTS][4];           /* x mode, yzw axis in the pane */
+    float dish_apex_r[HOLO_MAX_DISHES][4];          /* xyz apex, w curv_r */
+    float dish_axis_k[HOLO_MAX_DISHES][4];          /* xyz axis, w conic_k */
+    float dish_albedo_mirror[HOLO_MAX_DISHES][4];   /* xyz albedo, w mirror */
+    float dish_rim_count[HOLO_MAX_DISHES][4];       /* x rim; [0].y = dish count */
 
     /* x = lambda in um, yzw = that sample's CIE-derived sRGB weight. The
        shader must not re-derive these: CPU and GPU folding the same floats

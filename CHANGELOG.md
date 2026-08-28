@@ -95,6 +95,20 @@ later milestone builds on.
 - **Game hooks** — the display gains before_frame (simulate, then write
   the camera into the uniforms) and an event callback, alongside the
   existing after_frame; a game is now three callbacks and a scene.
+- **Curved mirrors** — `holo_ray_dish()`: a cap of a conic of revolution
+  in the language optical design quotes them (apex, axis, vertex radius of
+  curvature, conic constant, rim), quadratic along the ray in the dish's
+  own frame, sheet-clipped at the rim's sag. The tests hold it to the
+  definitions: a paraboloid reflects every zone's parallel ray through
+  R/2, an ellipsoid images focus onto focus, and both survive an arbitrary
+  tilt of the frame. (Dishes are mirror or matte; curved glass -- lenses --
+  waits for its own milestone. They do not yet throw shadows.)
+- **The sun as a disk** — rays within a cone of sun_dir see a set
+  intensity instead of the sky gradient, off by default. This is what
+  makes focusing VISIBLE by backward tracing alone: at a paraboloid's
+  focus every point of the dish reflects the eye into the sun, so the
+  whole aperture flashes -- the solar-furnace test pins it at exactly the
+  disk intensity on the focus and plain sky half a meter off it.
 
 ### Examples
 
@@ -128,6 +142,11 @@ later milestone builds on.
   and mouse into a fixed-step walker with real collision, every frame
   traced spectrally with polarization. T toggles spectral; walk up to the
   flint ball and its TIR rings fringe into actual spectra.
+- **m8_furnace** — a paraboloid dish aimed at a low sun with its focus
+  parked at eye height on the path from spawn: walk forward and the sun's
+  reflected image swells until, crossing the focus, the whole aperture
+  flashes blinding white -- a solar furnace from the inside. A concave
+  shaving mirror beside the path hangs the world upside down.
 
 ### Repository
 

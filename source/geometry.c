@@ -59,6 +59,80 @@ int holo_ray_rect(HoloRay r, HoloV3 corner, HoloV3 edge_u, HoloV3 edge_v,
     return 1;
 }
 
+void holo_basis(HoloV3 axis, HoloV3 *u, HoloV3 *v) {
+    HoloV3 helper = fabsf(axis.x) > 0.9f ? hv3(0, 1, 0) : hv3(1, 0, 0);
+    *u = hv3_norm(hv3_cross(helper, axis));
+    *v = hv3_cross(axis, *u);
+}
+
+int holo_ray_dish(HoloRay r, HoloV3 apex, HoloV3 axis,
+                  float curv_r, float conic_k, float rim, HoloHit *hit) {
+    /* Into the dish's frame: z along the axis, apex at the origin. The
+       surface is x^2 + y^2 + (1+K) z^2 - 2Rz = 0 -- the conic sag equation
+       cleared of its square root -- which is quadratic along the ray. */
+    HoloV3 u, v;
+    holo_basis(axis, &u, &v);
+    HoloV3 rel = hv3_sub(r.origin, apex);
+    HoloV3 o = hv3(hv3_dot(rel, u), hv3_dot(rel, v), hv3_dot(rel, axis));
+    HoloV3 d = hv3(hv3_dot(r.dir, u), hv3_dot(r.dir, v), hv3_dot(r.dir, axis));
+
+    float p = 1.0f + conic_k;
+    float A = d.x * d.x + d.y * d.y + p * d.z * d.z;
+    float B = o.x * d.x + o.y * d.y + p * o.z * d.z - curv_r * d.z;
+    float C = o.x * o.x + o.y * o.y + p * o.z * o.z - 2.0f * curv_r * o.z;
+
+    /* The cap ends at the rim's sag; anything past it (an ellipsoid's far
+       half, a hyperboloid's other sheet) is not part of the dish. */
+    float rr = rim * rim;
+    float root = 1.0f - p * rr / (curv_r * curv_r);
+    float z_max = rr / (curv_r * (1.0f + sqrtf(root > 0.0f ? root : 0.0f)));
+
+    float t1, t2;
+    if (fabsf(A) < 1e-8f) {
+        /* An axis-parallel ray on a paraboloid: the quadratic degenerates
+           to a line, one crossing. */
+        if (fabsf(B) < 1e-12f) {
+            return 0;
+        }
+        t1 = -C / (2.0f * B);
+        t2 = -1.0f;
+    } else {
+        float disc = B * B - A * C;
+        if (disc < 0.0f) {
+            return 0;
+        }
+        float sq = sqrtf(disc);
+        t1 = (-B - sq) / A;
+        t2 = (-B + sq) / A;
+    }
+
+    /* Nearest crossing that is in front of the ray AND on the cap: the
+       near root can be a clipped sheet while the far one is the visible
+       bowl (looking into a concave mirror does exactly this). */
+    for (int pass = 0; pass < 2; pass++) {
+        float t = pass == 0 ? t1 : t2;
+        if (t <= HOLO_T_MIN) {
+            continue;
+        }
+        float z = o.z + t * d.z;
+        float x = o.x + t * d.x;
+        float y = o.y + t * d.y;
+        if (z < 0.0f || z > z_max || x * x + y * y > rr) {
+            continue;
+        }
+        hit->t = t;
+        hit->point = hv3_add(r.origin, hv3_scale(r.dir, t));
+        /* Gradient of the surface equation, back in world axes. */
+        HoloV3 n_local = hv3(x, y, p * z - curv_r);
+        HoloV3 n = hv3_norm(hv3_add(hv3_add(hv3_scale(u, n_local.x),
+                                            hv3_scale(v, n_local.y)),
+                                    hv3_scale(axis, n_local.z)));
+        hit->normal = hv3_dot(n, r.dir) < 0.0f ? n : hv3_scale(n, -1.0f);
+        return 1;
+    }
+    return 0;
+}
+
 int holo_ray_plane(HoloRay r, HoloV3 point, HoloV3 normal, HoloHit *hit) {
     float denom = hv3_dot(normal, r.dir);
     if (fabsf(denom) < 1e-8f) {

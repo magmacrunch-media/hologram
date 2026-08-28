@@ -17,8 +17,8 @@ cbuffer params : register(b0) {
     float3 sun_dir;   float floor_y;
     float3 horizon;   float rect_count;
     float3 zenith;    float floor_mirror;
-    float3 floor_a;   float pad_b;
-    float3 floor_b;   float pad_c;
+    float3 floor_a;   float sun_disk_cos;
+    float3 floor_b;   float sun_disk_intensity;
     float4 sph_center_radius[8];
     float4 sph_albedo_mirror[8];
     float4 sph_glass[8];
@@ -28,6 +28,10 @@ cbuffer params : register(b0) {
     float4 rect_albedo[8];
     float4 rect_glass[8];     /* x transmit, y ior, z disperse, w retard */
     float4 rect_filter[8];    /* x mode (0/1/2), yzw axis in the pane */
+    float4 dish_apex_r[4];    /* xyz apex, w vertex radius of curvature */
+    float4 dish_axis_k[4];    /* xyz axis, w conic constant */
+    float4 dish_albedo_mirror[4];
+    float4 dish_rim_count[4]; /* x rim; [0].y = dish count */
     float4 spectral_lw[12];   /* x lambda um, yzw CIE-derived sRGB weight */
 };
 
@@ -89,6 +93,56 @@ bool ray_rect(float3 ro, float3 rd, float3 corner, float3 eu, float3 ev,
     if (u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0) return false;
     if (denom > 0.0) normal = -normal;
     return true;
+}
+
+/* holo_ray_dish: a cap of a conic of revolution, quadratic along the ray
+   in the dish's own frame. Ported statement for statement. */
+bool ray_dish(float3 ro, float3 rd, float3 apex, float3 axis,
+              float curv_r, float conic_k, float rim,
+              out float t_out, out float3 normal) {
+    t_out = 0; normal = float3(0, 0, 0);
+    float3 helper = abs(axis.x) > 0.9 ? float3(0, 1, 0) : float3(1, 0, 0);
+    float3 u = normalize(cross(helper, axis));
+    float3 v = cross(axis, u);
+    float3 rel = ro - apex;
+    float3 o = float3(dot(rel, u), dot(rel, v), dot(rel, axis));
+    float3 d = float3(dot(rd, u), dot(rd, v), dot(rd, axis));
+
+    float p = 1.0 + conic_k;
+    float A = d.x * d.x + d.y * d.y + p * d.z * d.z;
+    float B = o.x * d.x + o.y * d.y + p * o.z * d.z - curv_r * d.z;
+    float C = o.x * o.x + o.y * o.y + p * o.z * o.z - 2.0 * curv_r * o.z;
+
+    float rr = rim * rim;
+    float root = 1.0 - p * rr / (curv_r * curv_r);
+    float z_max = rr / (curv_r * (1.0 + sqrt(max(root, 0.0))));
+
+    float t1, t2;
+    if (abs(A) < 1e-8) {
+        if (abs(B) < 1e-12) return false;
+        t1 = -C / (2.0 * B);
+        t2 = -1.0;
+    } else {
+        float disc = B * B - A * C;
+        if (disc < 0.0) return false;
+        float sq = sqrt(disc);
+        t1 = (-B - sq) / A;
+        t2 = (-B + sq) / A;
+    }
+
+    for (int side = 0; side < 2; side++) {
+        float t = side == 0 ? t1 : t2;
+        if (t <= T_MIN) continue;
+        float z = o.z + t * d.z;
+        float x = o.x + t * d.x;
+        float y = o.y + t * d.y;
+        if (z < 0.0 || z > z_max || x * x + y * y > rr) continue;
+        t_out = t;
+        float3 n = normalize(u * x + v * y + axis * (p * z - curv_r));
+        normal = dot(n, rd) < 0.0 ? n : -n;
+        return true;
+    }
+    return false;
 }
 
 /* holo_ray_plane, for the y-up floor only (all any scene has). */
@@ -154,6 +208,17 @@ bool nearest_hit(float3 ro, float3 rd,
             found = true;
         }
     }
+    for (int k = 0; k < (int)dish_rim_count[0].y; k++) {
+        if (ray_dish(ro, rd, dish_apex_r[k].xyz, dish_axis_k[k].xyz,
+                     dish_apex_r[k].w, dish_axis_k[k].w,
+                     dish_rim_count[k].x, t, n) && t < best_t) {
+            best_t = t; best_n = n;
+            albedo = dish_albedo_mirror[k].xyz;
+            mirror = dish_albedo_mirror[k].w;
+            transmit = 0; ior = 1; disperse = 0; volume = false;
+            found = true;
+        }
+    }
     if (has_floor > 0.5 && ray_floor(ro, rd, t) && t < best_t) {
         best_t = t;
         best_n = float3(0, rd.y < 0.0 ? 1 : -1, 0);
@@ -189,6 +254,10 @@ bool sun_blocked(float3 p) {
 }
 
 float3 sky(float3 dir) {
+    if (sun_disk_intensity > 0.0 && dot(dir, sun_dir) > sun_disk_cos) {
+        return float3(sun_disk_intensity, sun_disk_intensity,
+                      sun_disk_intensity);
+    }
     return lerp(horizon, zenith, 0.5 * (dir.y + 1.0));
 }
 

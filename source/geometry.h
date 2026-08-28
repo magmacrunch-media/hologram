@@ -37,4 +37,17 @@ int holo_ray_plane(HoloRay r, HoloV3 point, HoloV3 normal, HoloHit *hit);
 int holo_ray_rect(HoloRay r, HoloV3 corner, HoloV3 edge_u, HoloV3 edge_v,
                   HoloHit *hit);
 
+/* A dish: a cap of a conic of revolution, in the language optical design
+   quotes them -- apex point, axis (unit, pointing out of the bowl), vertex
+   radius of curvature R, conic constant K (0 a sphere, -1 a paraboloid,
+   -e^2 an ellipsoid, below -1 a hyperboloid), clipped at rim radius. A
+   paraboloid focuses parallel light at R/2 above the apex because this
+   intersection and its normal say so; the tests hold both to that. */
+int holo_ray_dish(HoloRay r, HoloV3 apex, HoloV3 axis,
+                  float curv_r, float conic_k, float rim, HoloHit *hit);
+
+/* An orthonormal basis around a unit axis, deterministic so the CPU and
+   GPU build the same one. */
+void holo_basis(HoloV3 axis, HoloV3 *u, HoloV3 *v);
+
 #endif

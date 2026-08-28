@@ -5,6 +5,7 @@
  *
  *   build.bat test
  */
+#include <math.h>
 #include <stdio.h>
 #include "harness.h"
 #include "geometry.h"
@@ -99,9 +100,88 @@ static void test_rect(void) {
     check_int(holo_ray_rect(r, corner, eu, ev, &h), 1, "inside the skew hits");
 }
 
+/* Distance from a point to the line (origin, dir). */
+static float line_dist(HoloV3 point, HoloV3 origin, HoloV3 dir) {
+    HoloV3 rel = hv3_sub(point, origin);
+    HoloV3 perp = hv3_sub(rel, hv3_scale(dir, hv3_dot(rel, dir)));
+    return hv3_len(perp);
+}
+
+static void test_dish_paraboloid(void) {
+    printf("geometry: a paraboloid focuses at R/2, every zone\n");
+    /* K = -1, R = 2: focal length exactly 1. Parallel rays at any radius
+       must reflect through (0,0,1) -- the definition of a paraboloid, and
+       the test that catches a wrong normal as surely as a wrong sag. */
+    HoloV3 apex = hv3(0, 0, 0), axis = hv3(0, 0, 1), focus = hv3(0, 0, 1);
+    float radii[] = { 0.3f, 0.8f, 1.4f };
+    for (int i = 0; i < 3; i++) {
+        HoloRay r = { .origin = hv3(radii[i], 0, 5), .dir = hv3(0, 0, -1) };
+        HoloHit h;
+        check_int(holo_ray_dish(r, apex, axis, 2.0f, -1.0f, 1.6f, &h), 1,
+                  "parallel ray lands on the dish");
+        check_close(h.point.z, radii[i] * radii[i] / 4.0f, "at the sag");
+        HoloV3 out = hv3_reflect(r.dir, h.normal);
+        check_close(line_dist(focus, h.point, out), 0.0f,
+                    "reflection passes through the focus");
+    }
+
+    /* Straight down the axis: the degenerate quadratic, and the reflection
+       comes straight back. */
+    HoloRay r = { .origin = hv3(0, 0, 5), .dir = hv3(0, 0, -1) };
+    HoloHit h;
+    check_int(holo_ray_dish(r, apex, axis, 2.0f, -1.0f, 1.6f, &h), 1,
+              "axial ray hits the vertex");
+    check_close(h.t, 5.0f, "at the apex");
+
+    /* Outside the rim there is no dish. */
+    r.origin = hv3(2.5f, 0, 5);
+    check_int(holo_ray_dish(r, apex, axis, 2.0f, -1.0f, 1.6f, &h), 0,
+              "past the rim misses");
+}
+
+static void test_dish_ellipsoid(void) {
+    printf("geometry: an ellipsoid images focus onto focus\n");
+    /* a = 2, e = 0.5: R = b^2/a = 1.5, K = -e^2 = -0.25, foci at z = 1 and
+       z = 3 from the vertex. A ray leaving the near focus must reflect
+       through the far one -- the property whisper galleries and X-ray
+       telescope tolerances both live on. */
+    HoloV3 apex = hv3(0, 0, 0), axis = hv3(0, 0, 1);
+    HoloV3 f2 = hv3(0, 0, 3);
+    float angles[] = { 0.4f, 0.8f, 1.2f };
+    for (int i = 0; i < 3; i++) {
+        HoloRay r = { .origin = hv3(0, 0, 1),
+                      .dir = hv3_norm(hv3(sinf(angles[i]), 0,
+                                          -cosf(angles[i]))) };
+        HoloHit h;
+        check_int(holo_ray_dish(r, apex, axis, 1.5f, -0.25f, 1.55f, &h), 1,
+                  "the ray from the near focus lands");
+        HoloV3 out = hv3_reflect(r.dir, h.normal);
+        check_close(line_dist(f2, h.point, out), 0.0f,
+                    "and reflects through the far focus");
+    }
+}
+
+static void test_dish_tilted(void) {
+    printf("geometry: the dish frame is not the world frame\n");
+    /* The same paraboloid pointed along +x: an x-parallel ray at height
+       0.8 must still reflect through the (now rotated) focus. */
+    HoloV3 apex = hv3(2, 1, 3), axis = hv3(1, 0, 0);
+    HoloV3 focus = hv3(3, 1, 3);   /* apex + f * axis */
+    HoloRay r = { .origin = hv3(8, 1.8f, 3), .dir = hv3(-1, 0, 0) };
+    HoloHit h;
+    check_int(holo_ray_dish(r, apex, axis, 2.0f, -1.0f, 1.6f, &h), 1,
+              "hits the tilted dish");
+    HoloV3 out = hv3_reflect(r.dir, h.normal);
+    check_close(line_dist(focus, h.point, out), 0.0f,
+                "the focus rides with the frame");
+}
+
 int main(void) {
     test_sphere();
     test_plane();
     test_rect();
+    test_dish_paraboloid();
+    test_dish_ellipsoid();
+    test_dish_tilted();
     return report();
 }

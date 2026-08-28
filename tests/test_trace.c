@@ -346,6 +346,37 @@ static void test_waveplate_colors(void) {
     check(at_blue > 0.2f, "blue leaks through the same element");
 }
 
+static void test_solar_furnace(void) {
+    printf("trace: at the focus, the whole dish is the sun\n");
+    /* A paraboloid aimed at the sun, the eye at its focus: EVERY ray from
+       the focus to the dish reflects exactly into the sun disk, so every
+       point of the dish shows sun intensity -- the reason solar furnace
+       aperture views are blinding, reproduced by backward tracing alone.
+       Off the focus, the same rays miss the disk and see plain sky. */
+    HoloScene s = {
+        .dishes = { { .apex = hv3(0, 0, 0), .axis = hv3(0, 0, 1),
+                      .curv_r = 2.0f, .conic_k = -1.0f, .rim = 1.5f,
+                      .albedo = hv3(1, 1, 1), .mirror = 1.0f } },
+        .dish_count = 1,
+        .sun_dir = hv3(0, 0, 1),
+        .sun_disk_cos = 0.9994f,   /* about a 2-degree disk */
+        .sun_disk_intensity = 25.0f,
+        .horizon = hv3(0.4f, 0.4f, 0.4f), .zenith = hv3(0.4f, 0.4f, 0.4f),
+    };
+    /* From the focus (0,0,1) toward an off-axis point of the dish. */
+    HoloV3 target = hv3(1.0f, 0, 0.25f);   /* the r=1 zone, z = r^2/2R */
+    HoloRay r = { .origin = hv3(0, 0, 1),
+                  .dir = hv3_norm(hv3_sub(target, hv3(0, 0, 1))) };
+    float lit = holo_trace_lambda(&s, r, 0.55f);
+    check_close(lit, 25.0f, "the zone shows full sun intensity");
+
+    /* The same aim from half a meter off the focus: no sun. */
+    r.origin = hv3(0, 0.5f, 1);
+    r.dir = hv3_norm(hv3_sub(target, r.origin));
+    float unlit = holo_trace_lambda(&s, r, 0.55f);
+    check_close(unlit, 0.4f, "off the focus, plain sky in the mirror");
+}
+
 int main(void) {
     test_camera();
     test_shading();
@@ -360,5 +391,6 @@ int main(void) {
     test_dispersion_fringes();
     test_polarizers_in_scene();
     test_waveplate_colors();
+    test_solar_furnace();
     return report();
 }

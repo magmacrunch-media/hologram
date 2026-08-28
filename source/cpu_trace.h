@@ -17,6 +17,7 @@
 
 #define HOLO_MAX_SPHERES 8
 #define HOLO_MAX_RECTS   8
+#define HOLO_MAX_DISHES  4
 
 /* Reflections deeper than this add nothing: with any real mirror tint the
    throughput is well under 1% by here, and the corridor's far end is a few
@@ -81,11 +82,26 @@ typedef struct {
     float  retard;           /* waveplate retardance at the D line, radians */
 } HoloRect;
 
+/* A curved mirror, in the language optics quotes them: apex, axis, vertex
+   radius of curvature, conic constant, rim. Mirror or matte only -- curved
+   glass (lenses) waits for a milestone of its own. */
+typedef struct {
+    HoloV3 apex;
+    HoloV3 axis;             /* unit, out of the bowl */
+    float  curv_r;
+    float  conic_k;
+    float  rim;
+    HoloV3 albedo;
+    float  mirror;
+} HoloDish;
+
 typedef struct {
     HoloSphere spheres[HOLO_MAX_SPHERES];
     int    sphere_count;
     HoloRect rects[HOLO_MAX_RECTS];
     int    rect_count;
+    HoloDish dishes[HOLO_MAX_DISHES];
+    int    dish_count;
 
     int    has_floor;
     float  floor_y;
@@ -94,6 +110,14 @@ typedef struct {
 
     HoloV3 sun_dir;            /* unit, from the scene toward the sun */
     HoloV3 horizon, zenith;    /* the M0 sky */
+
+    /* The sun as a visible disk: rays within acos(sun_disk_cos) of sun_dir
+       see sun_disk_intensity instead of the gradient. Zero intensity turns
+       it off (the default). This is what makes focusing visible: a mirror
+       that sends your eye-ray into the sun shows you the sun, and at a
+       paraboloid's focus every point of the dish does. */
+    float  sun_disk_cos;
+    float  sun_disk_intensity;
 } HoloScene;
 
 /* The color a single ray sees, mirror bounces included. RGB light: glass

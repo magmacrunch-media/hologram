@@ -29,7 +29,9 @@ void holo_gpu_scene_fill(HoloGpuScene *gpu, const HoloScene *scene,
     put3(gpu->horizon, scene->horizon);
     put3(gpu->zenith, scene->zenith);
     put3(gpu->floor_a, scene->floor_a);
+    gpu->sun_disk_cos = scene->sun_disk_cos;
     put3(gpu->floor_b, scene->floor_b);
+    gpu->sun_disk_intensity = scene->sun_disk_intensity;
 
     for (int i = 0; i < scene->sphere_count; i++) {
         put3(gpu->sph_center_radius[i], scene->spheres[i].center);
@@ -62,6 +64,17 @@ void holo_gpu_scene_fill(HoloGpuScene *gpu, const HoloScene *scene,
         gpu->rect_filter[i][2] = axis.y;
         gpu->rect_filter[i][3] = axis.z;
     }
+
+    for (int i = 0; i < scene->dish_count; i++) {
+        put3(gpu->dish_apex_r[i], scene->dishes[i].apex);
+        gpu->dish_apex_r[i][3] = scene->dishes[i].curv_r;
+        put3(gpu->dish_axis_k[i], scene->dishes[i].axis);
+        gpu->dish_axis_k[i][3] = scene->dishes[i].conic_k;
+        put3(gpu->dish_albedo_mirror[i], scene->dishes[i].albedo);
+        gpu->dish_albedo_mirror[i][3] = scene->dishes[i].mirror;
+        gpu->dish_rim_count[i][0] = scene->dishes[i].rim;
+    }
+    gpu->dish_rim_count[0][1] = (float)scene->dish_count;
 
     for (int i = 0; i < HOLO_WAVELENGTHS; i++) {
         HoloV3 w = holo_spectral_weight(i);
