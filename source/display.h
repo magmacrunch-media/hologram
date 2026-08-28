@@ -29,7 +29,19 @@ typedef struct {
     int         height;
     const char *fs_source;   /* fragment shader source for the quad (backend
                                 dialect; HLSL on Windows until sokol-shdc
-                                arrives with M2) */
+                                arrives) */
+
+    /* A game's own uniform block, uploaded every frame in place of the bare
+       HoloDisplayUniforms. It must START with a HoloDisplayUniforms --
+       display.c fills those fields in each frame before uploading -- and the
+       game writes the rest whenever it likes; the upload reads the memory
+       fresh every frame. Leave null to get just the built-in block. */
+    void *uniforms;
+    int   uniforms_size;
+
+    /* Called after each frame is drawn, still inside the frame loop: the
+       place to read pixels back, count frames, request quit. */
+    void (*after_frame)(void);
 } HoloDisplayDesc;
 
 /* Fill in sokol's sapp_desc from ours. sokol owns main(), so a game's entry
@@ -43,5 +55,11 @@ void holo_display_frame(void);
 
 /* Seconds since init, as the uniforms will report it. */
 float holo_display_time(void);
+
+/* Copy the frame most recently drawn into rgba (w*h*4 bytes, rows top-down),
+   which must match the real framebuffer size. Returns 1, or 0 where the
+   backend cannot read back (only D3D11 answers today). This exists for the
+   oracle: the GPU-vs-CPU image diff needs the GPU's actual pixels. */
+int holo_display_read_frame(unsigned char *rgba, int w, int h);
 
 #endif

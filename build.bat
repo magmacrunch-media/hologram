@@ -22,10 +22,12 @@ if "%1"=="test" goto :tests
 rem /W4 is the MSVC face of the -Wall -Wextra rule in AGENTS.md; sokol's own
 rem warnings are not ours to fix, so display.c (its implementation TU)
 rem compiles at /W3.
-cl /nologo /std:c11 /W3 /O2 /DSOKOL_D3D11 /Fobuild\ /Febuild\m0_window.exe ^
+cl /nologo /std:c11 /W3 /O2 /DSOKOL_D3D11 /DSOKOL_WIN32_FORCE_MAIN /Fobuild\ /Febuild\m0_window.exe ^
     examples\m0_window\main.c source\display.c %PURE% || exit /b 1
 cl /nologo /std:c11 /W4 /O2 /Fobuild\ /Febuild\m1_cpu.exe ^
     examples\m1_cpu\main.c %PURE% || exit /b 1
+cl /nologo /std:c11 /W3 /O2 /DSOKOL_D3D11 /DSOKOL_WIN32_FORCE_MAIN /Fobuild\ /Febuild\m2_gpu.exe ^
+    examples\m2_gpu\main.c source\display.c %PURE% || exit /b 1
 exit /b 0
 
 :tests
