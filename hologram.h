@@ -17,6 +17,8 @@
 #include "source/camera.h"    /* the camera as a ray generator                  */
 #include "source/cpu_trace.h" /* the CPU reference tracer: hologram's oracle    */
 #include "source/display.h"   /* window, GPU device, fullscreen tracing surface */
+#include "source/gpu_scene.h" /* the scene as the shader's uniform block        */
+#include "source/oracle.h"    /* holding the GPU frame to the CPU oracle        */
 #include "source/timestep.h"  /* fixed-step accumulator (ported from magnolia)  */
 
 #endif

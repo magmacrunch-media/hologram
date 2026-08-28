@@ -98,9 +98,112 @@ static void test_image(void) {
     check_close(rgb[0], rgb[3 * 3], "and is flat across a row");
 }
 
+static void test_mirror_image(void) {
+    printf("trace: a mirror shows the mirrored scene\n");
+    /* The oldest fact about mirrors: looking THROUGH one at a sphere must
+       equal looking STRAIGHT at the sphere's mirror image. Scene A has a
+       perfect wall mirror at z = 0 and a sphere in front of it; scene B has
+       no mirror and the sphere moved to its image position behind z = 0.
+       The same ray must see the same color in both -- the sun is vertical,
+       so the lighting is symmetric under the flip too. */
+    HoloScene a = {
+        .spheres = { { .center = hv3(1, 1, 2), .radius = 0.5f,
+                       .albedo = hv3(0.8f, 0.2f, 0.4f) } },
+        .sphere_count = 1,
+        .rects = { { .corner = hv3(-4, 0, 0), .edge_u = hv3(8, 0, 0),
+                     .edge_v = hv3(0, 4, 0), .albedo = hv3(1, 1, 1),
+                     .mirror = 1.0f } },
+        .rect_count = 1,
+        .sun_dir = hv3(0, 1, 0),
+        .horizon = hv3(0.7f, 0.7f, 0.7f), .zenith = hv3(0.1f, 0.1f, 0.1f),
+    };
+    HoloScene b = a;
+    b.rect_count = 0;
+    b.spheres[0].center = hv3(1, 1, -2);
+
+    /* Aimed through the mirror at the image point. */
+    HoloRay r = { .origin = hv3(2, 1, 4),
+                  .dir = hv3_norm(hv3(-1, 0, -6)) };
+    HoloV3 through = holo_trace_ray(&a, r);
+    HoloV3 unfolded = holo_trace_ray(&b, r);
+    check_close(through.x, unfolded.x, "mirror image r");
+    check_close(through.y, unfolded.y, "mirror image g");
+    check_close(through.z, unfolded.z, "mirror image b");
+}
+
+static void test_corridor(void) {
+    printf("trace: facing mirrors attenuate per bounce\n");
+    /* Two facing mirror panels tinted (0.5, 1, 1): every bounce halves the
+       red and leaves green and blue alone. A ray at 45 degrees walks the
+       corridor in 4m steps, bounces exactly 5 times before the panels run
+       out, and escapes to a sky whose value is known -- so the answer is
+       0.5^5 of the red and all of the rest. */
+    HoloScene s = {
+        .rects = {
+            { .corner = hv3(0, 0, -14), .edge_u = hv3(0, 0, 22),
+              .edge_v = hv3(0, 2, 0), .albedo = hv3(0.5f, 1, 1), .mirror = 1 },
+            { .corner = hv3(4, 0, -14), .edge_u = hv3(0, 0, 22),
+              .edge_v = hv3(0, 2, 0), .albedo = hv3(0.5f, 1, 1), .mirror = 1 },
+        },
+        .rect_count = 2,
+        .sun_dir = hv3(0, 1, 0),
+        .horizon = hv3(1, 0.8f, 0.6f), .zenith = hv3(0, 0.4f, 0.2f),
+    };
+    /* dir has y = 0, so the escape sky is the exact horizon/zenith mean. */
+    float inv_sqrt2 = 0.70710678f;
+    HoloRay r = { .origin = hv3(0, 1, 7),
+                  .dir = hv3(inv_sqrt2, 0, -inv_sqrt2) };
+    HoloV3 c = holo_trace_ray(&s, r);
+    check_close(c.x, 0.03125f * 0.5f, "red halved five times");
+    check_close(c.y, 0.6f, "green untouched");
+    check_close(c.z, 0.4f, "blue untouched");
+}
+
+static void test_depth_cap(void) {
+    printf("trace: trapped light gives up dark\n");
+    /* Perpendicular between two perfect mirrors the ray never escapes; at
+       the bounce cap the walk stops having banked nothing, and the answer
+       is black -- not a hang, not a stack, just spent light. */
+    HoloScene s = {
+        .rects = {
+            { .corner = hv3(0, 0, -14), .edge_u = hv3(0, 0, 22),
+              .edge_v = hv3(0, 2, 0), .albedo = hv3(1, 1, 1), .mirror = 1 },
+            { .corner = hv3(4, 0, -14), .edge_u = hv3(0, 0, 22),
+              .edge_v = hv3(0, 2, 0), .albedo = hv3(1, 1, 1), .mirror = 1 },
+        },
+        .rect_count = 2,
+        .sun_dir = hv3(0, 1, 0),
+        .horizon = hv3(1, 1, 1), .zenith = hv3(1, 1, 1),
+    };
+    HoloRay r = { .origin = hv3(2, 1, 0), .dir = hv3(1, 0, 0) };
+    HoloV3 c = holo_trace_ray(&s, r);
+    check_close(c.x, 0.0f, "no light comes back");
+}
+
+static void test_polished_floor(void) {
+    printf("trace: a part-mirror splits matte and reflection\n");
+    /* Straight down at a half-mirror white floor under a noon sun: the
+       matte half banks 0.5, the mirrored half carries 0.5 up to the zenith.
+       0.5 + 0.5 * 0.2 = 0.6, by hand. */
+    HoloScene s = {
+        .has_floor = 1,
+        .floor_a = hv3(1, 1, 1), .floor_b = hv3(1, 1, 1),
+        .floor_mirror = 0.5f,
+        .sun_dir = hv3(0, 1, 0),
+        .horizon = hv3(1, 1, 1), .zenith = hv3(0.2f, 0.2f, 0.2f),
+    };
+    HoloRay r = { .origin = hv3(0.5f, 2, 0.5f), .dir = hv3(0, -1, 0) };
+    HoloV3 c = holo_trace_ray(&s, r);
+    check_close(c.x, 0.6f, "matte share plus mirrored zenith");
+}
+
 int main(void) {
     test_camera();
     test_shading();
     test_image();
+    test_mirror_image();
+    test_corridor();
+    test_depth_cap();
+    test_polished_floor();
     return report();
 }

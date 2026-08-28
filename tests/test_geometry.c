@@ -67,8 +67,41 @@ static void test_plane(void) {
     check_int(holo_ray_plane(r, hv3(0, 0, 0), hv3(0, 1, 0), &h), 0, "receding ray misses");
 }
 
+static void test_rect(void) {
+    printf("geometry: ray vs rectangle\n");
+    HoloHit h;
+
+    /* A 2x2 panel in the xy plane. */
+    HoloV3 corner = hv3(0, 0, 0), eu = hv3(2, 0, 0), ev = hv3(0, 2, 0);
+    HoloRay r = { .origin = hv3(1, 1, 5), .dir = hv3(0, 0, -1) };
+    check_int(holo_ray_rect(r, corner, eu, ev, &h), 1, "center of the panel");
+    check_close(h.t, 5.0f, "at t = 5");
+    check_close(h.normal.z, 1.0f, "normal on the arriving side");
+
+    r.origin = hv3(3, 1, 5);
+    check_int(holo_ray_rect(r, corner, eu, ev, &h), 0, "past the edge misses");
+
+    r.origin = hv3(1, 1, 5);
+    r.dir = hv3(1, 0, 0);
+    check_int(holo_ray_rect(r, corner, eu, ev, &h), 0, "parallel misses");
+
+    /* A skewed parallelogram: edges (2,0,0) and (1,2,0). The point
+       (0.4, 1.0) is OUTSIDE it (affine u = -0.05), but projecting onto each
+       edge independently would call it inside (u = 0.2) -- this is the case
+       the Gram solve exists for. */
+    ev = hv3(1, 2, 0);
+    r.origin = hv3(0.4f, 1.0f, 5);
+    r.dir = hv3(0, 0, -1);
+    check_int(holo_ray_rect(r, corner, eu, ev, &h), 0,
+              "skewed edges use true affine coords");
+    /* And a point genuinely inside the skewed panel still hits. */
+    r.origin = hv3(1.9f, 0.2f, 5);   /* u = 0.9, v = 0.1 */
+    check_int(holo_ray_rect(r, corner, eu, ev, &h), 1, "inside the skew hits");
+}
+
 int main(void) {
     test_sphere();
     test_plane();
+    test_rect();
     return report();
 }

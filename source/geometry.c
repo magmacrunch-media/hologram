@@ -31,6 +31,34 @@ int holo_ray_sphere(HoloRay r, HoloV3 center, float radius, HoloHit *hit) {
     return 1;
 }
 
+int holo_ray_rect(HoloRay r, HoloV3 corner, HoloV3 edge_u, HoloV3 edge_v,
+                  HoloHit *hit) {
+    /* Meet the rectangle's plane first, then ask whether the point landed
+       inside the edges. The edge test projects the landing onto each edge;
+       edges need not be perpendicular, so this is really a parallelogram --
+       every mirror so far is a rectangle, and the math does not care. */
+    HoloV3 n = hv3_norm(hv3_cross(edge_u, edge_v));
+    HoloHit h;
+    if (!holo_ray_plane(r, corner, n, &h)) {
+        return 0;
+    }
+    /* rel = u*edge_u + v*edge_v, solved through the Gram matrix so skewed
+       edges get true affine coordinates (independent projections would only
+       be right for perpendicular edges). */
+    HoloV3 rel = hv3_sub(h.point, corner);
+    float uu = hv3_dot(edge_u, edge_u), vv = hv3_dot(edge_v, edge_v);
+    float uv = hv3_dot(edge_u, edge_v);
+    float ru = hv3_dot(rel, edge_u), rv = hv3_dot(rel, edge_v);
+    float det = uu * vv - uv * uv;
+    float u = (ru * vv - rv * uv) / det;
+    float v = (rv * uu - ru * uv) / det;
+    if (u < 0.0f || u > 1.0f || v < 0.0f || v > 1.0f) {
+        return 0;
+    }
+    *hit = h;
+    return 1;
+}
+
 int holo_ray_plane(HoloRay r, HoloV3 point, HoloV3 normal, HoloHit *hit) {
     float denom = hv3_dot(normal, r.dir);
     if (fabsf(denom) < 1e-8f) {

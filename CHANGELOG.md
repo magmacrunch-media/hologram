@@ -33,7 +33,18 @@ later milestone builds on.
   frame; `holo_display_read_frame()` reads the presented frame back through a
   D3D11 staging texture, so the GPU's actual pixels can be held to the oracle.
 - **The tracer on the GPU** — `shaders/trace.hlsl` is cpu_trace.c ported
-  statement for statement; scene and camera arrive as one uniform block.
+  statement for statement; scene and camera arrive as one uniform block
+  (`source/gpu_scene.c`, the same layout written in two languages).
+- **Mirrors** — `source/geometry.c` gains finite rectangles (Gram-solved
+  affine coordinates, so skewed panels stay honest); every material carries a
+  mirror weight; both tracers walk reflections iteratively to 16 bounces,
+  banking the matte share at each surface and tinting the throughput by the
+  mirror's own albedo. Held by tests to the mirror-image property (looking
+  through a mirror equals looking at the mirrored scene), to per-bounce
+  attenuation (0.5^5 exactly after five bounces off half-red mirrors), and to
+  the depth cap (trapped light returns black, not a hang).
+- **The oracle as a callable** — `source/oracle.c` wraps the GPU-vs-CPU frame
+  diff behind one function, so every example's --diff mode is three lines.
 
 ### Examples
 
@@ -45,6 +56,10 @@ later milestone builds on.
   the frame back and holds it to the CPU oracle (mean error under 1/255,
   outliers under 0.5% -- the run that landed this measured 0.012/255 mean
   with 0.001% outliers, all of them silhouette pixels).
+- **m3_mirrors** — the shot this engine exists for: two facing mirror walls,
+  a chrome sphere, a polished floor, all reflecting each other to real
+  recursion depth. Screen-space reflection cannot draw this frame; the GPU
+  version diffs against the oracle at 0.022/255 mean error.
 
 ### Repository
 

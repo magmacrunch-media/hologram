@@ -32,4 +32,9 @@ typedef struct {
 int holo_ray_sphere(HoloRay r, HoloV3 center, float radius, HoloHit *hit);
 int holo_ray_plane(HoloRay r, HoloV3 point, HoloV3 normal, HoloHit *hit);
 
+/* A finite parallelogram: corner plus two edge vectors (not unit -- their
+   lengths are the panel's size). This is what a mirror is made of. */
+int holo_ray_rect(HoloRay r, HoloV3 corner, HoloV3 edge_u, HoloV3 edge_v,
+                  HoloHit *hit);
+
 #endif
