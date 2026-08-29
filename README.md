@@ -11,7 +11,8 @@ ray, and meets every surface in closed form.
 Named after the Dag Henderson track "hologram of a dream", published by
 magmacrunch music.
 
-Current version: **0.1.0** (see [CHANGELOG.md](CHANGELOG.md)). The full
+Current version: **0.2.0** in progress; **v0.1.0** is the first tagged
+release (see [CHANGELOG.md](CHANGELOG.md)). The full
 reference lives in the [wiki](https://github.com/magmacrunchmedia/hologram/wiki).
 
 ![Two ruled panels diffracting sunlight into their orders](docs/images/m9-gratings.png)

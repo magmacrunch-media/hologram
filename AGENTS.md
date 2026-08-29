@@ -2,7 +2,7 @@
 
 Optics-first 3D game engine: a spectral ray tracer where light obeys physics.
 C99 + sokol (vendored under `external/sokol/`), shaders in GLSL/HLSL. Version
-0.1.0 (the `VERSION` file is the source of truth). Games compile hologram's
+0.2.0 (the `VERSION` file is the source of truth; v0.1.0 is tagged). Games compile hologram's
 sources directly, magnolia-style — there is no library build. PolyForm
 Noncommercial 1.0.0 (see NOTICE — deliberately unlike the Apache-2.0 2D
 engines; hologram's commercial rights stay with magmacrunch media LLC).

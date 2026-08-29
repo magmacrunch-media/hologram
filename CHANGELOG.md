@@ -2,6 +2,11 @@
 
 All notable changes to the hologram engine are documented here.
 
+## v0.2.0 (unreleased)
+
+The game release: whatever Crystal Mirror Maze development asks of the
+engine lands here.
+
 ## v0.1.0
 
 The founding release: everything from the M0 window through the M9 gratings,

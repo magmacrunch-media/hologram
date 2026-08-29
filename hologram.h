@@ -10,7 +10,7 @@
  * not listed here.
  */
 
-#define HOLOGRAM_VERSION "0.1.0"
+#define HOLOGRAM_VERSION "0.2.0"
 
 #include "source/linalg.h"    /* vectors, reflection, Snell's law               */
 #include "source/geometry.h"  /* rays against the analytic surfaces             */
