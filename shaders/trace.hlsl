@@ -22,14 +22,14 @@ cbuffer params : register(b0) {
     float4 sph_center_radius[8];
     float4 sph_albedo_mirror[8];
     float4 sph_glass[8];
-    float4 rect_corner_mirror[8];
-    float4 rect_solve_u[8];   /* xyz: u = dot(rel, this) */
-    float4 rect_solve_v[8];   /* xyz: v = dot(rel, this) */
-    float4 rect_albedo[8];
-    float4 rect_glass[8];     /* x transmit, y ior, z disperse, w retard --
+    float4 rect_corner_mirror[24];
+    float4 rect_solve_u[24];   /* xyz: u = dot(rel, this) */
+    float4 rect_solve_v[24];   /* xyz: v = dot(rel, this) */
+    float4 rect_albedo[24];
+    float4 rect_glass[24];     /* x transmit, y ior, z disperse, w retard --
                                  or, when the rect is a grating: x period um,
                                  yzw the m = -1, 0, +1 order weights */
-    float4 rect_filter[8];    /* x mode (0 none/1 polarizer/2 waveplate/
+    float4 rect_filter[24];    /* x mode (0 none/1 polarizer/2 waveplate/
                                  3 grating), yzw filter axis or groove dir */
     float4 dish_apex_r[4];    /* xyz apex, w vertex radius of curvature */
     float4 dish_axis_k[4];    /* xyz axis, w conic constant */

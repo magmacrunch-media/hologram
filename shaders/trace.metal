@@ -89,25 +89,25 @@ using namespace metal;
 #define sph_albedo_mirror(i)   params[18 + (i)]
 #define sph_glass(i)           params[26 + (i)]
 #define rect_corner_mirror(i)  params[34 + (i)]
-#define rect_solve_u(i)        params[42 + (i)]
-#define rect_solve_v(i)        params[50 + (i)]
-#define rect_albedo(i)         params[58 + (i)]
-#define rect_glass(i)          params[66 + (i)]
-#define rect_filter(i)         params[74 + (i)]
-#define dish_apex_r(i)         params[82 + (i)]
-#define dish_axis_k(i)         params[86 + (i)]
-#define dish_albedo_mirror(i)  params[90 + (i)]
-#define dish_rim_count(i)      params[94 + (i)]
-#define spectral_lw(i)         params[98 + (i)]
+#define rect_solve_u(i)        params[58 + (i)]
+#define rect_solve_v(i)        params[82 + (i)]
+#define rect_albedo(i)         params[106 + (i)]
+#define rect_glass(i)          params[130 + (i)]
+#define rect_filter(i)         params[154 + (i)]
+#define dish_apex_r(i)         params[178 + (i)]
+#define dish_axis_k(i)         params[182 + (i)]
+#define dish_albedo_mirror(i)  params[186 + (i)]
+#define dish_rim_count(i)      params[190 + (i)]
+#define spectral_lw(i)         params[194 + (i)]
 
 /* The gratings sit in scalar slots, not a dynamically indexed array: see the
    note in trace.hlsl. Metal has no such defect, but the tracers stay
    identical in structure so the oracle diff keeps its meaning. */
-#define grat0_groove_idx    params[110]
-#define grat0_period_w      params[111]
-#define grat1_groove_idx    params[112]
-#define grat1_period_w      params[113]
-#define grat_w2             params[114]
+#define grat0_groove_idx    params[206]
+#define grat0_period_w      params[207]
+#define grat1_groove_idx    params[208]
+#define grat1_period_w      params[209]
+#define grat_w2             params[210]
 
 /* Globals must live in an address space; these are compile-time constants. */
 constant float T_MIN = 1e-3;      /* HOLO_T_MIN */

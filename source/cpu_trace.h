@@ -16,7 +16,7 @@
 #include "camera.h"
 
 #define HOLO_MAX_SPHERES 8
-#define HOLO_MAX_RECTS   8
+#define HOLO_MAX_RECTS   24
 #define HOLO_MAX_DISHES  4
 
 /* Reflections deeper than this add nothing: with any real mirror tint the

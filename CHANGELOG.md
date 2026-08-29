@@ -227,6 +227,15 @@ later milestone builds on.
   no-AI-attribution rule), VERSION as source of truth, Apache-2.0, host tests
   as standalone binaries under `tests/`.
 - sokol vendored under `external/sokol/` (zlib licence).
+- **`HOLO_MAX_RECTS` raised from 8 to 24** — the panel allowance Crystal
+  Mirror Maze needs, sized to the measured frame budget rather than
+  aspiration (24 panels cost 2.17ms on a desktop GPU at 640x480 spectral,
+  which scales to roughly a Deck frame). The uniform block grows to 211
+  float4 slots, still inside WebGL2's guaranteed 224-vector floor, so the
+  web path survives. The hand-carried slot maps in the GLSL and MSL tracers
+  moved sixteen numbers each; `test_gpu_layout` held every one to
+  `offsetof`, and all eight oracle diffs are unchanged on D3D11 and on
+  Linux GL.
 - **The fullscreen triangle rides a real vertex buffer** instead of being
   derived from SV_VertexID with nothing bound. Added on the suspicion that
   the bufferless draw was what garbled the frame under Wine; the suspicion
