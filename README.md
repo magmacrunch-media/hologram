@@ -84,9 +84,10 @@ to release the mouse.
 
 - **C99 engine, one tracer in three dialects** (HLSL for D3D11, GLSL for GL
   and GLES3/WebGL2, MSL for Metal), on [sokol](https://github.com/floooh/sokol)
-  (vendored, zlib licence) for the window, GPU device and swapchain. Only the
-  D3D11 path has shipped: the GLSL tracer is oracle-green under WebGL2, and
-  the Metal one has not yet met a Metal device.
+  (vendored, zlib licence) for the window, GPU device and swapchain. Windows
+  ships and Linux is proven -- all eight examples pass the oracle natively on
+  GL as well as under D3D11 -- while the Metal dialect is written,
+  type-checked, and has not yet met a Metal device.
 - **The tracing runs on the GPU** as a fullscreen-quad fragment shader over a
   scene of analytic primitives delivered in one uniform block.
 - **Fixed-timestep simulation** (`source/timestep.c`, ported verbatim from
