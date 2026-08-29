@@ -232,6 +232,12 @@ later milestone builds on.
 - `tools/gldiff` renders `shaders/trace.glsl` in a WebGL2 context and compares
   it to the CPU oracle using oracle.c's own arithmetic and bars, which is how
   the GL tracer is held to the reference from a host with no GL toolchain.
+- `tools/bench` times the GPU against panel count, and A/Bs one tracer file
+  against another on real hardware. It uses D3D11 timestamp queries rather
+  than the frame clock, because with vsync on every number is the refresh
+  interval and with it off the CPU runs ahead of the GPU; on backends with no
+  GPU clock it falls back and says so. It has already overruled intuition
+  once, on whether to ship the rect normal or derive it.
 - `tools/metalcheck` type-checks `shaders/trace.metal` by compiling it as
   C++14 against a `metal_stdlib` stand-in, so the MSL tracer gets some
   verification on hosts that can neither compile nor run it. Names, arities

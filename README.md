@@ -174,6 +174,42 @@ linkage between the two stages, or whether the shader renders. Those need a
 Mac, and until one has run `--diff` the Metal tracer should be read as
 unproven.
 
+### What a panel costs
+
+The oracle says whether the tracer is right. `tools/bench` says what it
+costs, which is the question a mirror maze raises: `nearest_hit` scans the
+panels linearly, once per ray per bounce, and a full mirror keeps every ray
+alive to the bounce cap. Panel count is a frame-time budget, not a capacity.
+
+```
+buildench.exe
+```
+
+It sweeps 1 up to `HOLO_MAX_RECTS` in the same window, timing the GPU rather
+than the frame. That distinction matters: with vsync on every number is the
+refresh interval, and with it off sokol presents without waiting, so the CPU
+runs ahead and the frame clock measures the loop. On D3D11 bench uses
+timestamp queries instead, which time the pass and nothing else; on the other
+backends it falls back to the frame clock and says so in its own output.
+
+Raising `HOLO_MAX_RECTS` (and, by hand, the slot map the GLSL and MSL tracers
+carry) lets it sweep further. At 640x480, spectral, on one desktop GPU:
+
+| panels | 1 | 8 | 24 | 40 | 56 | 64 |
+|---|---|---|---|---|---|---|
+| GPU ms | 0.21 | 0.64 | 2.17 | 4.89 | 8.68 | 10.67 |
+
+Fifty times the cost from one panel to sixty-four, which is what a linear
+scan through a mirrored room looks like.
+
+It is also a shader A/B rig -- `--shader PATH` runs the sweep against any
+tracer file -- and it has already overruled intuition once. Hoisting the rect
+basis out of the intersection was a clear win; *also* shipping the
+precomputed normal looks like the same kind of win and is 1.35x SLOWER at 64
+panels, on D3D11 and WebGL2 alike, because the extra indexed constant fetch
+costs more than the cross and normalize it saves. That is why the tracers
+derive the normal from the solve vectors rather than being handed it.
+
 ### Engine modules
 
 Pure arithmetic is split from platform calls so the arithmetic is host

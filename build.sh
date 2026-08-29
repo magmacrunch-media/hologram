@@ -85,4 +85,10 @@ for e in m7_room m8_furnace m9_spectrum; do
     build_example "$e" source/oracle.c source/input.c
 done
 
+# tools/bench: GPU cost per panel. It has a real GPU clock only on
+# D3D11; elsewhere it falls back to the frame clock and says so.
+# shellcheck disable=SC2086
+$CC $CFLAGS $WARN $BACKEND -I. -o build/bench tools/bench/bench.c \
+    build/display.o $PURE $LIBS
+
 echo "built into build/ for $UNAME ($BACKEND)"
