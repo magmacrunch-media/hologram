@@ -2,10 +2,14 @@
 
 All notable changes to the hologram engine are documented here.
 
-## v0.1.0 (unreleased)
+## v0.1.0
 
-The founding release: repository skeleton, the M0 window, and the seams every
-later milestone builds on.
+The founding release: everything from the M0 window through the M9 gratings,
+and the portability work that followed — one tracer in three dialects (HLSL,
+GLSL, MSL) held to the CPU oracle, builds for Windows and Linux with macOS
+written and unproven, the gldiff/metalcheck/bench tools, and the scene sized
+to 24 panels for the game this engine exists for. Crystal Mirror Maze
+development starts against this release.
 
 ### Engine core
 
