@@ -69,6 +69,14 @@ const char *holo_shader_path(void);
    unexplained compile error. */
 int holo_load_shader(char *buf, int buf_size);
 
+/* The same, from a path of the caller's choosing. A tool that compares one
+   tracer against another has to load a file that is not this build's
+   default -- but it still needs the dialect preamble, which belongs to the
+   backend rather than to the file. Getting that wrong is invisible on
+   D3D11, where the preamble is empty, and fatal on GL, where the shader
+   then compiles as GLSL 1.10. */
+int holo_load_shader_from(const char *path, char *buf, int buf_size);
+
 /* Fill in sokol's sapp_desc from ours. sokol owns main(), so a game's entry
    point is sokol_main() returning holo_display_app(&desc); the callbacks
    below then run inside the frame loop. */

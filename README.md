@@ -111,21 +111,24 @@ by more than 8/255.
 Each cell below is that pair: mean error in 1/255 levels, then the share of
 pixels off by more than 8/255. Every one passes.
 
-| example | what it puts under the light | HLSL on D3D11 | GLSL in WebGL2 |
-|---|---|---|---|
-| `m2_gpu` | spheres, checker floor, the RGB walk | 0.1030 · 0.001% | 0.1033 · 0.001% |
-| `m3_mirrors` | facing mirrors recursing | 0.0480 · 0.001% | 0.0482 · 0.001% |
-| `m4_glass` | Fresnel, refraction, total internal reflection | 0.1161 · 0.163% | 0.1603 · 0.163% |
-| `m5_spectral` | twelve wavelengths, Cauchy dispersion | 0.1183 · 0.503% | 0.2512 · 0.498% |
-| `m6_polarization` | Stokes vectors, Mueller matrices, a waveplate | 0.0608 · 0.015% | 0.0657 · 0.015% |
-| `m7_room` | all of the above at once, spectrally | 0.0834 · 0.230% | 0.1976 · 0.236% |
-| `m8_furnace` | conic dishes, focusing at R/2 | 0.0185 · 0.022% | 0.0266 · 0.022% |
-| `m9_spectrum` | gratings, conical orders | 0.0949 · 0.025% | 0.0973 · 0.025% |
+| example | what it puts under the light | HLSL, D3D11 | GLSL, Linux GL | GLSL, WebGL2 |
+|---|---|---|---|---|
+| `m2_gpu` | spheres, checker floor, the RGB walk | 0.1030 · 0.001% | 0.0001 · 0.000% | 0.1033 · 0.001% |
+| `m3_mirrors` | facing mirrors recursing | 0.0480 · 0.001% | 0.0003 · 0.001% | 0.0482 · 0.001% |
+| `m4_glass` | Fresnel, refraction, total internal reflection | 0.1161 · 0.163% | 0.0201 · 0.123% | 0.1603 · 0.163% |
+| `m5_spectral` | twelve wavelengths, Cauchy dispersion | 0.1183 · 0.503% | 0.0802 · 0.383% | 0.2512 · 0.498% |
+| `m6_polarization` | Stokes vectors, Mueller matrices, a waveplate | 0.0608 · 0.015% | 0.0015 · 0.009% | 0.0657 · 0.015% |
+| `m7_room` | all of the above at once, spectrally | 0.0834 · 0.230% | 0.0400 · 0.156% | 0.1976 · 0.236% |
+| `m8_furnace` | conic dishes, focusing at R/2 | 0.0185 · 0.022% | 0.0015 · 0.010% | 0.0266 · 0.022% |
+| `m9_spectrum` | gratings, conical orders | 0.0949 · 0.025% | 0.0026 · 0.010% | 0.0973 · 0.025% |
 
-The outlier percentages track each other almost exactly, which is the column
-worth reading: it says both tracers take the same branches and cull the same
-rays. The means run higher under WebGL2 only where twelve wavelengths give
-float noise room to accumulate.
+The outlier percentages track each other across all three, which is the
+thing worth reading: it says every tracer takes the same branches and culls
+the same rays. The Linux column was measured under Mesa's software
+rasteriser, which does the arithmetic the way the CPU oracle does -- so it
+shows what the agreement looks like with the GPU's fast-math divergence
+taken away, and the answer is four decimal places. The other two columns
+are that same agreement plus each driver's own liberties.
 
 **What has actually been run.** The table above is the whole of it; the rest
 of the porting work is written but unproven, and should be read that way.
@@ -133,11 +136,12 @@ of the porting work is written but unproven, and should be read that way.
 | path | state |
 |---|---|
 | HLSL tracer, D3D11 readback | green, eight of eight |
-| GLSL tracer | green, eight of eight, through `tools/gldiff` |
-| GL readback (`glReadPixels`) | written; no GL host has run it |
+| GLSL tracer | green, eight of eight, natively on Linux GL and through `tools/gldiff` |
+| GL readback (`glReadPixels`) | green -- it is what the native Linux `--diff` reads |
 | MSL tracer | type-checks under `tools/metalcheck`; no Metal device has seen it |
 | Metal readback | written; never compiled -- it sits behind `#elif SOKOL_METAL` |
-| `build.sh` (Linux, macOS) | syntax-checked; never executed |
+| `build.sh` on Linux | builds and runs; tests and all eight `--diff` green |
+| `build.sh` on macOS | never executed |
 
 The catch is that a readback needs the backend it runs on, and only the D3D11
 one has ever run -- so on Windows the GL tracer cannot be held to the oracle
@@ -189,7 +193,8 @@ It sweeps 1 up to `HOLO_MAX_RECTS` in the same window, timing the GPU rather
 than the frame. That distinction matters: with vsync on every number is the
 refresh interval, and with it off sokol presents without waiting, so the CPU
 runs ahead and the frame clock measures the loop. On D3D11 bench uses
-timestamp queries instead, which time the pass and nothing else; on the other
+timestamp queries, and on GL `GL_TIME_ELAPSED` queries, which time the pass
+and nothing else; on any other
 backends it falls back to the frame clock and says so in its own output.
 
 Raising `HOLO_MAX_RECTS` (and, by hand, the slot map the GLSL and MSL tracers

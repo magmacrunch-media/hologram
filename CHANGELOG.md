@@ -227,13 +227,27 @@ later milestone builds on.
   no-AI-attribution rule), VERSION as source of truth, Apache-2.0, host tests
   as standalone binaries under `tests/`.
 - sokol vendored under `external/sokol/` (zlib licence).
+- **The Linux build runs.** `build.sh` was written but never executed; the
+  first attempt found two compile stoppers -- a missing `stdlib.h` that MSVC
+  had been forgiving about, and `clock_gettime` hidden from sokol by
+  `-std=c11` being strict ISO rather than gnu (the POSIX feature macro now
+  goes on sokol's translation unit alone, so hologram's own sources stay
+  strict). With those fixed, all eight examples build and every one agrees
+  with the oracle through the GL readback, which had also never run. Under
+  Mesa's software rasteriser the agreement is four decimal places, because
+  it does the arithmetic the way cpu_trace.c does.
+- `holo_load_shader_from()` loads a tracer from a caller-chosen path, still
+  prepending the dialect preamble. `tools/bench` had been reading the file
+  itself, which is invisible on D3D11 (empty preamble) and fatal on GL, where
+  the tracer then compiles as GLSL 1.10.
 - `build.sh` beside `build.bat`: Linux (OpenGL) and macOS (Metal), same
   no-library, compile-the-sources contract.
 - `tools/gldiff` renders `shaders/trace.glsl` in a WebGL2 context and compares
   it to the CPU oracle using oracle.c's own arithmetic and bars, which is how
   the GL tracer is held to the reference from a host with no GL toolchain.
 - `tools/bench` times the GPU against panel count, and A/Bs one tracer file
-  against another on real hardware. It uses D3D11 timestamp queries rather
+  against another on real hardware. It uses D3D11 timestamp queries and GL
+  `GL_TIME_ELAPSED` queries rather
   than the frame clock, because with vsync on every number is the refresh
   interval and with it off the CPU runs ahead of the GPU; on backends with no
   GPU clock it falls back and says so. It has already overruled intuition

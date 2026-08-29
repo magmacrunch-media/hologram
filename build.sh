@@ -29,7 +29,11 @@ Linux)
     # sokol_app: X11, Xi, Xcursor, dl, pthread, m for every backend; GL for
     # SOKOL_GLCORE. -pthread is needed at compile and link time both.
     LIBS="-lGL -lX11 -lXi -lXcursor -ldl -lm -pthread"
-    DISPLAY_CFLAGS=""
+    # sokol calls clock_gettime, which is POSIX rather than ISO C, so
+    # -std=c11 hides its declaration. The feature macro goes on sokol's
+    # translation unit alone: hologram's own sources stay strict ISO,
+    # which is what caught a missing stdlib.h the first time this ran.
+    DISPLAY_CFLAGS="-D_POSIX_C_SOURCE=200809L"
     ;;
 Darwin)
     BACKEND="-DSOKOL_METAL"

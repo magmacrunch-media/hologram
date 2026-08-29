@@ -42,11 +42,11 @@ const char *holo_shader_path(void) {
     return HOLO_SHADER_PATH;
 }
 
-int holo_load_shader(char *buf, int buf_size) {
-    FILE *f = fopen(HOLO_SHADER_PATH, "rb");
+int holo_load_shader_from(const char *path, char *buf, int buf_size) {
+    FILE *f = fopen(path, "rb");
     if (!f) {
         printf("could not open %s -- run from the repository root\n",
-               HOLO_SHADER_PATH);
+               path);
         return 0;
     }
     /* The preamble goes in first, so the tracer file itself stays
@@ -63,10 +63,14 @@ int holo_load_shader(char *buf, int buf_size) {
     int truncated = !feof(f);
     fclose(f);
     if (truncated) {
-        printf("%s does not fit in %d bytes\n", HOLO_SHADER_PATH, buf_size);
+        printf("%s does not fit in %d bytes\n", path, buf_size);
         return 0;
     }
     return 1;
+}
+
+int holo_load_shader(char *buf, int buf_size) {
+    return holo_load_shader_from(HOLO_SHADER_PATH, buf, buf_size);
 }
 
 /* One fullscreen triangle from the vertex id -- no vertex buffer, nothing to

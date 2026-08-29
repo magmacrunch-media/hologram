@@ -38,6 +38,14 @@
 
 #if defined(SOKOL_D3D11)
     #include <d3d11.h>
+#elif defined(SOKOL_GLCORE)
+    /* GL_TIME_ELAPSED and the query calls are core since GL 3.3, and
+       libGL exports them directly -- the same reason display.c can call
+       glReadPixels. sokol is not compiled into this file, so the GL
+       headers have to be asked for here. */
+    #define GL_GLEXT_PROTOTYPES
+    #include <GL/gl.h>
+    #include <GL/glext.h>
 #endif
 #include "external/sokol/sokol_app.h"
 #include "external/sokol/sokol_gfx.h"
@@ -157,6 +165,33 @@ static double clock_end(void) {
     }
     return (double)(t1 - t0) * 1000.0 / (double)dj.Frequency;
 }
+#elif defined(SOKOL_GLCORE)
+static GLuint q_time;
+static int query_ready;
+
+static void clock_begin(void) {
+    if (!query_ready) {
+        glGenQueries(1, &q_time);
+        query_ready = (q_time != 0);
+        timing_is_gpu = query_ready;
+        if (!query_ready) {
+            return;
+        }
+    }
+    glBeginQuery(GL_TIME_ELAPSED, q_time);
+}
+
+/* glGetQueryObjectui64v with GL_QUERY_RESULT blocks until the GPU has
+   answered, which is what a benchmark wants. */
+static double clock_end(void) {
+    if (!query_ready) {
+        return sapp_frame_duration_unfiltered() * 1000.0;
+    }
+    glEndQuery(GL_TIME_ELAPSED);
+    GLuint64 ns = 0;
+    glGetQueryObjectui64v(q_time, GL_QUERY_RESULT, &ns);
+    return (double)ns / 1.0e6;
+}
 #else
 /* No GPU clock here. The frame duration includes the CPU and the present, so
    it overstates the shader and jitters more; the report says so. */
@@ -260,15 +295,13 @@ sapp_desc sokol_main(int argc, char *argv[]) {
 
     build_scene(stage_rects[0]);
 
-    FILE *f = fopen(shader_path, "rb");
-    if (!f) {
-        printf("bench: cannot open %s -- run from the repository root\n",
-               shader_path);
+    /* Through the engine's loader, not a bare fopen: it prepends the
+       dialect preamble, without which a GL build compiles the tracer as
+       GLSL 1.10 and fails on the first `in` qualifier. */
+    if (!holo_load_shader_from(shader_path, shader_src,
+                               (int)sizeof shader_src)) {
         exit(2);
     }
-    size_t n = fread(shader_src, 1, sizeof shader_src - 1, f);
-    shader_src[n] = 0;
-    fclose(f);
 
     sapp_desc d = holo_display_app(&(HoloDisplayDesc){
         .title = "hologram bench",
