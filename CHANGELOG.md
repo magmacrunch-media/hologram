@@ -138,6 +138,24 @@ later milestone builds on.
   The diff outlier bar moves 0.5% -> 0.75%: a dispersive ball traced at
   twelve wavelengths has twelve TIR rims of legitimate float-coin pixels.
 
+- **A second tracer dialect** — `shaders/trace.glsl`: the HLSL tracer ported
+  statement for statement into GLSL, serving GL 4.1 and GLES3/WebGL2 from one
+  file (display.c prepends the version line and precision defaults). sokol's
+  GL backend has no uniform buffer objects and takes at most sixteen named
+  uniforms per block, so the scene arrives as a single `vec4 params[]` read by
+  slot, with accessor macros restoring the field names; that slot map is held
+  to `offsetof(HoloGpuScene, ...)` by `tests/test_gpu_layout.c`. Agrees with
+  the oracle on all eight example scenes.
+- **Backend-agnostic display** — `source/display.c` now picks the shader
+  dialect, vertex stage, compile targets and uniform-block description from
+  the backend macro, loads the tracer through `holo_load_shader()` rather than
+  eight copies of an `fopen`, and reads frames back on GL as well as D3D11 so
+  the oracle survives leaving Windows.
+- **The oracle, exported** — `holo_oracle_dump()` writes a comparison's inputs
+  to disk (the uniform block as the shader receives it, and the CPU's encoded
+  frame), so a tracer that cannot run in this process can still be held to the
+  reference. Every example that takes `--diff` takes `--dump`.
+
 ### Examples
 
 - **m0_window** — opens a 640×480 window and shades the quad with a
@@ -187,3 +205,8 @@ later milestone builds on.
   no-AI-attribution rule), VERSION as source of truth, Apache-2.0, host tests
   as standalone binaries under `tests/`.
 - sokol vendored under `external/sokol/` (zlib licence).
+- `build.sh` beside `build.bat`: Linux (OpenGL) and macOS (Metal), same
+  no-library, compile-the-sources contract.
+- `tools/gldiff` renders `shaders/trace.glsl` in a WebGL2 context and compares
+  it to the CPU oracle using oracle.c's own arithmetic and bars, which is how
+  the GL tracer is held to the reference from a host with no GL toolchain.

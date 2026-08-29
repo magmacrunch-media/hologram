@@ -1,0 +1,201 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>hologram gldiff</title>
+<!--
+  gldiff: hold shaders/trace.glsl to the CPU oracle, in a browser.
+
+  The GL tracer often cannot be run where it is written -- a Windows machine
+  has no GL toolchain, and D3D11 is the only backend that reads frames back.
+  But every browser ships a conformant GLSL ES 3.00 compiler and a WebGL2
+  context, which is the same dialect sokol's GLES3 backend feeds, and close
+  enough to the GL 4.1 profile that a mistake in one is nearly always a
+  mistake in both. So: render the tracer here, and compare against a frame
+  the CPU oracle rendered, using oracle.c's own arithmetic and its own bars.
+
+  A passing verdict here means the GLSL tracer agrees with cpu_trace.c. It
+  is not a substitute for running an example with --diff natively on Linux
+  or macOS, which also exercises sokol's uniform plumbing and the real
+  driver -- but it catches the tracer's own bugs, which is most of them.
+
+  USE:
+    1. build\m7_room.exe --dump       (writes build\m7_room_{params,ref}.bin)
+    2. python -m http.server 8731 --bind 127.0.0.1     from the repo root
+    3. open http://127.0.0.1:8731/tools/gldiff/gldiff.html?s=m7_room
+
+  Any example that accepts --diff also accepts --dump. m7_room is the one to
+  reach for first: mirrors, glass, a polarizer and a dispersive ball put the
+  spectral walk, the Stokes carry and the recursion through their paces at
+  once. m9_spectrum covers the gratings.
+
+  The page reports "DIFF OK" or "DIFF FAIL" with the same statistics an
+  example prints, and draws the GPU frame, the CPU reference, and their
+  difference so a failure can be looked at rather than guessed at.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; margin: 16px; }
+  #verdict { font-size: 15px; font-weight: 700; margin: 0 0 4px; }
+  .ok { color: #12805c; } .bad { color: #c0362c; }
+  @media (prefers-color-scheme: dark) { .ok { color: #4ade80; } .bad { color: #f87171; } }
+  figure { display: inline-block; margin: 12px 12px 0 0; }
+  figcaption { opacity: .7; padding-top: 4px; }
+  canvas { border: 1px solid #8888; image-rendering: pixelated; max-width: 100%; }
+  pre { white-space: pre-wrap; }
+</style>
+
+<p id="verdict">rendering...</p>
+<pre id="detail"></pre>
+<figure><canvas id="gpu"></canvas><figcaption>GPU: trace.glsl in WebGL2</figcaption></figure>
+<figure><canvas id="cpu"></canvas><figcaption>CPU: the oracle</figcaption></figure>
+<figure><canvas id="dif"></canvas><figcaption>difference, x8</figcaption></figure>
+
+<script>
+const SCENE = new URLSearchParams(location.search).get('s') || 'm7_room';
+const ROOT = '../..';                       // this page lives in tools/gldiff/
+
+/* display.c prepends exactly this to the tracer for the GLES3 profile. */
+const PREAMBLE = "#version 300 es\nprecision highp float;\nprecision highp int;\n";
+
+/* display.c's fullscreen triangle, GLSL spelling. */
+const VS = PREAMBLE +
+  "out vec2 uv;\n" +
+  "void main() {\n" +
+  "    vec2 grid = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n" +
+  "    uv  = grid;\n" +
+  "    gl_Position = vec4(grid * vec2(2.0, -2.0) + vec2(-1.0, 1.0), 0.0, 1.0);\n" +
+  "}\n";
+
+const verdict = document.getElementById('verdict');
+const detail = document.getElementById('detail');
+
+function fail(msg) {
+  verdict.textContent = 'ERROR';
+  verdict.className = 'bad';
+  detail.textContent = msg;
+  window.__result = 'ERROR ' + msg;
+}
+
+function compileStage(gl, type, src, label, preambleLines) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  if (gl.getShaderParameter(sh, gl.COMPILE_STATUS)) return sh;
+  /* Report line numbers against the tracer file, not the prepended preamble. */
+  const lines = src.split('\n');
+  let log = gl.getShaderInfoLog(sh) || '';
+  const seen = new Set();
+  for (const m of log.matchAll(/ERROR:\s*\d+:(\d+)/g)) {
+    const n = parseInt(m[1], 10);
+    if (seen.has(n) || seen.size >= 12) continue;
+    seen.add(n);
+    log += '\n  ' + label + ' line ' + (n - preambleLines) + ': ' +
+           (lines[n - 1] || '<eof>');
+  }
+  throw new Error(label + ' failed to compile:\n' + log);
+}
+
+function draw(canvas, w, h, rgba) {
+  canvas.width = w; canvas.height = h;
+  const img = new ImageData(new Uint8ClampedArray(rgba), w, h);
+  canvas.getContext('2d').putImageData(img, 0, 0);
+}
+
+Promise.all([
+  fetch(ROOT + '/shaders/trace.glsl', {cache: 'no-store'}).then(r => {
+    if (!r.ok) throw new Error('cannot read shaders/trace.glsl (' + r.status + ')');
+    return r.text();
+  }),
+  fetch(ROOT + '/build/' + SCENE + '_params.bin', {cache: 'no-store'}).then(r => {
+    if (!r.ok) throw new Error('no dump for "' + SCENE + '" -- run  build' +
+                               String.fromCharCode(92) + SCENE + '.exe --dump');
+    return r.arrayBuffer();
+  }),
+  fetch(ROOT + '/build/' + SCENE + '_ref.bin', {cache: 'no-store'})
+    .then(r => r.arrayBuffer()),
+]).then(([fsSrc, paramsBuf, refBuf]) => {
+  /* ref.bin: two int32 of width and height, then w*h*3 encoded bytes. */
+  const head = new DataView(refBuf);
+  const W = head.getInt32(0, true), H = head.getInt32(4, true);
+  if (W <= 0 || H <= 0 || refBuf.byteLength !== 8 + W * H * 3) {
+    throw new Error('malformed ref.bin (' + W + 'x' + H + ', ' +
+                    refBuf.byteLength + ' bytes)');
+  }
+  const ref = new Uint8Array(refBuf, 8);
+
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const gl = cv.getContext('webgl2', {preserveDrawingBuffer: true, antialias: false});
+  if (!gl) throw new Error('this browser has no WebGL2 context');
+
+  const preLines = PREAMBLE.split('\n').length - 1;
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compileStage(gl, gl.VERTEX_SHADER, VS, 'vertex', preLines));
+  gl.attachShader(prog, compileStage(gl, gl.FRAGMENT_SHADER, PREAMBLE + fsSrc,
+                                     'trace.glsl', preLines));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS))
+    throw new Error('link failed:\n' + gl.getProgramInfoLog(prog));
+  gl.useProgram(prog);
+
+  /* The uniform block as sokol's GL backend uploads it: one vec4 array.
+     display.c writes its header -- resolution and time -- into slot 0 every
+     frame, so do that here too rather than trusting whatever was dumped. */
+  const params = new Float32Array(paramsBuf.slice(0));
+  params[0] = W; params[1] = H; params[2] = 0.0; params[3] = 0.0;
+  const loc = gl.getUniformLocation(prog, 'params');
+  if (loc === null)
+    throw new Error("uniform 'params' was optimised out or renamed");
+  gl.uniform4fv(loc, params);
+
+  gl.bindVertexArray(gl.createVertexArray());
+  gl.viewport(0, 0, W, H);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  const px = new Uint8Array(W * H * 4);
+  gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px);
+
+  /* glReadPixels reads bottom-up; the reference counts rows from the top.
+     display.c's GL readback applies the same flip. */
+  const gpuTop = new Uint8Array(W * H * 4);
+  const cpuTop = new Uint8Array(W * H * 4);
+  const difTop = new Uint8Array(W * H * 4);
+  let sum = 0, maxd = 0, outliers = 0;
+  for (let y = 0; y < H; y++) {
+    const src = (H - 1 - y) * W * 4;
+    for (let x = 0; x < W; x++) {
+      const gi = src + x * 4, ri = (y * W + x) * 3, di = (y * W + x) * 4;
+      let over = false;
+      for (let c = 0; c < 3; c++) {
+        const g = px[gi + c], r = ref[ri + c], d = Math.abs(g - r);
+        sum += d;
+        if (d > maxd) maxd = d;
+        if (d > 8) over = true;
+        gpuTop[di + c] = g;
+        cpuTop[di + c] = r;
+        difTop[di + c] = Math.min(255, d * 8);
+      }
+      gpuTop[di + 3] = cpuTop[di + 3] = difTop[di + 3] = 255;
+      if (over) outliers++;
+    }
+  }
+
+  const mean = sum / (W * H * 3);
+  const pct = 100 * outliers / (W * H);
+  /* oracle.c's bars, exactly. */
+  const ok = mean < 1.0 && pct < 0.75;
+
+  const line = SCENE + ' DIFF ' + (ok ? 'OK' : 'FAIL') + ': ' + W + 'x' + H +
+    ', mean err ' + mean.toFixed(4) + '/255, max ' + maxd + '/255, ' +
+    pct.toFixed(3) + '% pixels off by >8';
+  verdict.textContent = line;
+  verdict.className = ok ? 'ok' : 'bad';
+  detail.textContent =
+    'bars: mean < 1.0000/255 and outliers < 0.750%\n' +
+    'renderer: ' + gl.getParameter(gl.RENDERER);
+  window.__result = line;
+
+  draw(document.getElementById('gpu'), W, H, gpuTop);
+  draw(document.getElementById('cpu'), W, H, cpuTop);
+  draw(document.getElementById('dif'), W, H, difTop);
+}).catch(e => fail(e.message));
+</script>

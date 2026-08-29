@@ -32,6 +32,36 @@ static void dump_ppm(const char *path, const unsigned char *rgba,
     fclose(f);
 }
 
+/* The clamp, sRGB encode and UNORM rounding that the shader's one display
+   boundary applies. Shared, so the comparison below and the reference written
+   by holo_oracle_dump() can never encode a pixel differently. */
+/* Two blobs into one file. The only writer in the dump path, so there is
+   one place that can fail and one place that closes the handle. */
+static int write_file(const char *path, const void *a, size_t a_size,
+                      const void *b, size_t b_size) {
+    FILE *f = fopen(path, "wb");
+    if (!f) {
+        return 0;
+    }
+    if (a_size) {
+        fwrite(a, 1, a_size, f);
+    }
+    if (b_size) {
+        fwrite(b, 1, b_size, f);
+    }
+    fclose(f);
+    return 1;
+}
+
+static int encode_u8(float v) {
+    /* NaN-proof clamp: a NaN slipping out of a tracer must read as a wrong
+       pixel, not poison the whole statistic. */
+    v = v > 0 ? (v > 1 ? 1 : v) : 0;
+    v = v <= 0.0031308f ? v * 12.92f
+                        : 1.055f * powf(v, 1.0f / 2.4f) - 0.055f;
+    return (int)(v * 255.0f + 0.5f);
+}
+
 int holo_oracle_diff(const HoloScene *scene, const HoloCamera *cam,
                      int spectral, HoloOracleStats *stats) {
     const int w = sapp_width(), h = sapp_height();
@@ -58,15 +88,7 @@ int holo_oracle_diff(const HoloScene *scene, const HoloCamera *cam,
     int outliers = 0, max_diff = 0;
     for (int i = 0; i < w * h; i++) {
         for (int c = 0; c < 3; c++) {
-            float v = rgb[3 * i + c];
-            /* NaN-proof clamp: a NaN slipping out of a tracer must read
-               as a wrong pixel, not poison the whole statistic. */
-            v = v > 0 ? (v > 1 ? 1 : v) : 0;
-            /* The same sRGB encode the shader applies at its one display
-               boundary, then the same rounding the UNORM store applies. */
-            v = v <= 0.0031308f ? v * 12.92f
-                                : 1.055f * powf(v, 1.0f / 2.4f) - 0.055f;
-            int want = (int)(v * 255.0f + 0.5f);
+            int want = encode_u8(rgb[3 * i + c]);
             int got = gpu[4 * i + c];
             int d = got > want ? got - want : want - got;
             sum += d;
@@ -94,4 +116,48 @@ int holo_oracle_diff(const HoloScene *scene, const HoloCamera *cam,
     free(gpu);
     free(rgb);
     return ok;
+}
+
+int holo_oracle_dump(const HoloScene *scene, const HoloCamera *cam,
+                     int spectral, const void *gpu_scene, int gpu_scene_size,
+                     const char *name) {
+    /* The framebuffer the display is actually presenting, so the reference
+       is the size the GPU tracer will be asked to match. */
+    const int w = sapp_width(), h = sapp_height();
+    char path[256];
+
+    snprintf(path, sizeof path, "build/%s_params.bin", name);
+    if (!write_file(path, gpu_scene, (size_t)gpu_scene_size, 0, 0)) {
+        return 0;
+    }
+
+    float *rgb = malloc((size_t)w * h * 3 * sizeof(float));
+    unsigned char *enc = malloc((size_t)w * h * 3);
+    if (!rgb || !enc) {
+        free(rgb);
+        free(enc);
+        return 0;
+    }
+    if (spectral) {
+        holo_trace_image_spectral(scene, cam, w, h, rgb);
+    } else {
+        holo_trace_image(scene, cam, w, h, rgb);
+    }
+    for (int i = 0; i < w * h * 3; i++) {
+        enc[i] = (unsigned char)encode_u8(rgb[i]);
+    }
+
+    /* Dimensions first, so the reader need not be told the frame size. */
+    int dims[2] = { w, h };
+    snprintf(path, sizeof path, "build/%s_ref.bin", name);
+    int ok = write_file(path, dims, sizeof dims, enc, (size_t)w * h * 3);
+    free(rgb);
+    free(enc);
+    if (!ok) {
+        return 0;
+    }
+
+    printf("dumped build/%s_params.bin (%d bytes) and build/%s_ref.bin (%dx%d)\n",
+           name, gpu_scene_size, name, w, h);
+    return 1;
 }

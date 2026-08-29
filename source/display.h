@@ -54,6 +54,21 @@ typedef struct {
     void (*event_cb)(const struct sapp_event *ev);
 } HoloDisplayDesc;
 
+/* The tracer's source for the backend this build targets.
+ *
+ * There is one shader file per dialect -- HLSL for D3D11, GLSL for GL and
+ * GLES3, MSL for Metal -- and it is read from disk at startup rather than
+ * compiled in, so the tracer can be edited and an example relaunched without
+ * recompiling. A game ships the file for its backend beside the binary. */
+const char *holo_shader_path(void);
+
+/* Read that file into buf, NUL-terminated. Returns 1, or 0 after printing
+   why: no such file (the usual cause is being run from somewhere other than
+   the repository root), or a file too large for buf -- which is worth
+   catching, because a silently truncated shader fails much later as an
+   unexplained compile error. */
+int holo_load_shader(char *buf, int buf_size);
+
 /* Fill in sokol's sapp_desc from ours. sokol owns main(), so a game's entry
    point is sokol_main() returning holo_display_app(&desc); the callbacks
    below then run inside the frame loop. */

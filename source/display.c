@@ -12,9 +12,72 @@
 
 #include "display.h"
 
+#include <stdio.h>
+#include <string.h>
+
+/* Which dialect this build needs. The backend macro arrives from the build
+   script, the same one that selects sokol's backend, so the path and the
+   device can never disagree. */
+#if defined(SOKOL_D3D11)
+    #define HOLO_SHADER_PATH "shaders/trace.hlsl"
+    #define HOLO_SHADER_PREAMBLE ""
+#elif defined(SOKOL_METAL)
+    #define HOLO_SHADER_PATH "shaders/trace.metal"
+    #define HOLO_SHADER_PREAMBLE ""
+#elif defined(SOKOL_GLCORE)
+    #define HOLO_SHADER_PATH "shaders/trace.glsl"
+    #define HOLO_SHADER_PREAMBLE "#version 410\n"
+#elif defined(SOKOL_GLES3)
+    /* One file serves both GL profiles: only the version line and the
+       precision defaults differ, so they are prepended rather than
+       duplicated into a second copy of the tracer that would then have to
+       be kept in step with the first. */
+    #define HOLO_SHADER_PATH "shaders/trace.glsl"
+    #define HOLO_SHADER_PREAMBLE "#version 300 es\nprecision highp float;\nprecision highp int;\n"
+#else
+    #error "hologram: no tracer dialect for this sokol backend"
+#endif
+
+const char *holo_shader_path(void) {
+    return HOLO_SHADER_PATH;
+}
+
+int holo_load_shader(char *buf, int buf_size) {
+    FILE *f = fopen(HOLO_SHADER_PATH, "rb");
+    if (!f) {
+        printf("could not open %s -- run from the repository root\n",
+               HOLO_SHADER_PATH);
+        return 0;
+    }
+    /* The preamble goes in first, so the tracer file itself stays
+       dialect-clean: no version line to get wrong when hand-editing. */
+    size_t pre = strlen(HOLO_SHADER_PREAMBLE);
+    if ((int)pre >= buf_size) {
+        fclose(f);
+        return 0;
+    }
+    memcpy(buf, HOLO_SHADER_PREAMBLE, pre);
+    size_t n = fread(buf + pre, 1, (size_t)buf_size - pre - 1, f);
+    buf[pre + n] = 0;
+    /* Filling the buffer without reaching the end means the rest was lost. */
+    int truncated = !feof(f);
+    fclose(f);
+    if (truncated) {
+        printf("%s does not fit in %d bytes\n", HOLO_SHADER_PATH, buf_size);
+        return 0;
+    }
+    return 1;
+}
+
 /* One fullscreen triangle from the vertex id -- no vertex buffer, nothing to
-   bind. uv runs 0..1 across the visible frame (y down, matching D3D). */
-static const char *VS_HLSL =
+   bind. uv runs 0..1 across the visible frame with (0,0) at the TOP-left,
+   which is the corner the tracer's camera treats as the top of the image.
+
+   The same clip-space expression serves every dialect: +y is up in D3D,
+   GL and Metal clip space alike, so the -2/+1 flip lands uv=(0,0) at the
+   top-left in all three. Only the spelling changes. */
+#if defined(SOKOL_D3D11)
+static const char *VS_SOURCE =
     "struct vs_out { float4 pos : SV_Position; float2 uv : TEXCOORD0; };\n"
     "vs_out main(uint vid : SV_VertexID) {\n"
     "    vs_out o;\n"
@@ -23,6 +86,30 @@ static const char *VS_HLSL =
     "    o.pos = float4(grid * float2(2, -2) + float2(-1, 1), 0, 1);\n"
     "    return o;\n"
     "}\n";
+#elif defined(SOKOL_GLCORE) || defined(SOKOL_GLES3)
+/* The version line is prepended by holo_load_shader for the fragment stage;
+   the vertex stage carries its own, since it is compiled in. */
+static const char *VS_SOURCE =
+    HOLO_SHADER_PREAMBLE
+    "out vec2 uv;\n"
+    "void main() {\n"
+    "    vec2 grid = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
+    "    uv  = grid;\n"
+    "    gl_Position = vec4(grid * vec2(2.0, -2.0) + vec2(-1.0, 1.0), 0.0, 1.0);\n"
+    "}\n";
+#elif defined(SOKOL_METAL)
+static const char *VS_SOURCE =
+    "#include <metal_stdlib>\n"
+    "using namespace metal;\n"
+    "struct vs_out { float4 pos [[position]]; float2 uv; };\n"
+    "vertex vs_out main0(uint vid [[vertex_id]]) {\n"
+    "    vs_out o;\n"
+    "    float2 grid = float2((vid << 1) & 2, vid & 2);\n"
+    "    o.uv  = grid;\n"
+    "    o.pos = float4(grid * float2(2, -2) + float2(-1, 1), 0, 1);\n"
+    "    return o;\n"
+    "}\n";
+#endif
 
 static struct {
     HoloDisplayDesc desc;
@@ -36,26 +123,57 @@ static void init_cb(void) {
         .logger.func = slog_func,
     });
 
+    /* The block the fragment stage receives: the game's, when it supplies
+       one, and the bare header otherwise. Must be a whole number of float4
+       slots -- the GL path below describes it as an array of them. */
+    const size_t ub_size = state.desc.uniforms
+                               ? (size_t)state.desc.uniforms_size
+                               : sizeof(HoloDisplayUniforms);
+
+    sg_shader_desc sd = {
+        .vertex_func.source = VS_SOURCE,
+        .fragment_func.source = state.desc.fs_source,
+        .uniform_blocks[0] = {
+            .stage = SG_SHADERSTAGE_FRAGMENT,
+            .size = (uint32_t)ub_size,
+        },
+        .label = "holo-quad-shader",
+    };
+
+#if defined(SOKOL_D3D11)
     /* Shader model 5.0, not sokol's 4.0 default: the tracer dynamically
        indexes cbuffer arrays (scene lookups) AND large local arrays (the
        ray stack), and SM4 has no native dynamic cbuffer indexing -- fxc
        emulates it by copying arrays into indexable temps, and past a
        certain count that emulation silently aliases the copies onto other
        arrays. SM5 indexes constant buffers in hardware. */
-    sg_shader shd = sg_make_shader(&(sg_shader_desc){
-        .vertex_func.source = VS_HLSL,
-        .vertex_func.d3d11_target = "vs_5_0",
-        .fragment_func.source = state.desc.fs_source,
-        .fragment_func.d3d11_target = "ps_5_0",
-        .uniform_blocks[0] = {
-            .stage = SG_SHADERSTAGE_FRAGMENT,
-            .size = state.desc.uniforms
-                        ? (size_t)state.desc.uniforms_size
-                        : sizeof(HoloDisplayUniforms),
-            .hlsl_register_b_n = 0,
-        },
-        .label = "holo-quad-shader",
-    });
+    sd.vertex_func.d3d11_target = "vs_5_0";
+    sd.fragment_func.d3d11_target = "ps_5_0";
+    sd.uniform_blocks[0].hlsl_register_b_n = 0;
+#elif defined(SOKOL_METAL)
+    /* MSL has no main(); each stage is its own library, so both may use the
+       same entry name. sokol asserts that one is supplied. */
+    sd.vertex_func.entry = "main0";
+    sd.fragment_func.entry = "main0";
+    sd.uniform_blocks[0].msl_buffer_n = 0;
+#elif defined(SOKOL_GLCORE) || defined(SOKOL_GLES3)
+    /* sokol's GL backend has no uniform buffer objects: it flattens a block
+       into individual glUniform*fv calls against named uniforms, and it
+       accepts at most SG_MAX_UNIFORMBLOCK_MEMBERS (16) of them. The tracer's
+       block has closer to thirty fields, so the GLSL tracer declares the
+       whole block as ONE array -- uniform vec4 params[N] -- and reads its
+       fields by slot. That is not a workaround so much as the layout that
+       was already there: gpu_scene.h counts the block in float4s on both
+       sides, and the slot number IS that count. */
+    sd.uniform_blocks[0].layout = SG_UNIFORMLAYOUT_STD140;
+    sd.uniform_blocks[0].glsl_uniforms[0] = (sg_glsl_shader_uniform){
+        .type = SG_UNIFORMTYPE_FLOAT4,
+        .array_count = (uint16_t)(ub_size / 16),
+        .glsl_name = "params",
+    };
+#endif
+
+    sg_shader shd = sg_make_shader(&sd);
 
     state.pip = sg_make_pipeline(&(sg_pipeline_desc){
         .shader = shd,
@@ -171,6 +289,30 @@ int holo_display_read_frame(unsigned char *rgba, int w, int h) {
     staging->lpVtbl->Release(staging);
     backbuf->lpVtbl->Release(backbuf);
     return ok;
+}
+#elif (defined(SOKOL_GLCORE) || defined(SOKOL_GLES3)) && !defined(_WIN32)
+/* glReadPixels reads the default framebuffer bottom-up, while the oracle and
+   the CPU tracer it compares against both count rows from the top, so the
+   rows are reversed on the way out.
+
+   Not available on Windows+GL: there sokol supplies its own GL loader and
+   suppresses the system GL headers, and glReadPixels is not among the
+   entry points it loads. Windows traces through D3D11 above in any case. */
+int holo_display_read_frame(unsigned char *rgba, int w, int h) {
+    if (w != sapp_width() || h != sapp_height()) {
+        return 0;
+    }
+    glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    for (int y = 0; y < h / 2; y++) {
+        unsigned char *a = rgba + (size_t)y * w * 4;
+        unsigned char *b = rgba + (size_t)(h - 1 - y) * w * 4;
+        for (int i = 0; i < w * 4; i++) {
+            unsigned char t = a[i];
+            a[i] = b[i];
+            b[i] = t;
+        }
+    }
+    return 1;
 }
 #else
 int holo_display_read_frame(unsigned char *rgba, int w, int h) {

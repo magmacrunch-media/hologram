@@ -34,6 +34,9 @@ shaders/                shader source (per-backend for now; sokol-shdc later)
 external/sokol/         vendored sokol headers (zlib licence, see LICENSE there)
 tests/                  host-side tests + harness.h; each test is its own binary
 examples/               one runnable demo per milestone
+tools/                  dev tools that are not the engine (gldiff: holds the
+                        GLSL tracer to the oracle in a browser, for hosts with
+                        no GL toolchain)
 build.bat               Windows build (finds vcvars64, builds examples + tests)
 ```
 

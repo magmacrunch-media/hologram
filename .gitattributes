@@ -1,0 +1,4 @@
+# Shell scripts must reach Linux and macOS with LF endings and no CR, or
+# the shebang line fails with a "bad interpreter" that names an invisible
+# character. The rest of the tree keeps whatever the local checkout wants.
+*.sh text eol=lf

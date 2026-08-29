@@ -57,7 +57,8 @@ recompiling.
 
 Each milestone left a runnable demo behind. Every GPU example accepts
 `--diff`, which renders the same frame through the CPU tracer and compares
-(see [The oracle](#the-oracle) below); the exit code is the verdict.
+(see [The oracle](#the-oracle) below); the exit code is the verdict. They also
+accept `--dump`, which writes that comparison's inputs out for `tools/gldiff`.
 
 | | |
 |---|---|
@@ -105,6 +106,24 @@ exit code. The bar is a mean error under 1/255 with under 0.75% of pixels off
 by more than 8/255; the whole example suite currently sits between 0.02 and
 0.12 mean.
 
+The catch is that only the D3D11 backend reads frames back, so on Windows the
+GL tracer cannot be held to the oracle at all. `tools/gldiff` closes that gap.
+Every example that accepts `--diff` also accepts `--dump`, which writes the
+uniform block exactly as the shader receives it alongside the CPU's frame;
+`tools/gldiff/gldiff.html` then renders `shaders/trace.glsl` in a WebGL2
+context and compares, using the same arithmetic and the same bars, and draws
+the two frames and their difference side by side.
+
+```
+build\m7_room.exe --dump
+python -m http.server 8731 --bind 127.0.0.1
+```
+
+then open `http://127.0.0.1:8731/tools/gldiff/gldiff.html?s=m7_room`. It is
+not a substitute for running `--diff` natively on the backend you ship, which
+also exercises sokol's plumbing and the real driver -- but it catches the
+tracer's own bugs, which is most of them.
+
 ### Engine modules
 
 Pure arithmetic is split from platform calls so the arithmetic is host
@@ -131,13 +150,20 @@ testable, the discipline magnolia's `timestep.c` was extracted for.
 build.bat test
 ```
 
-**236 checks across 7 suites**, each test a standalone binary. They assert
+**313 checks across 8 suites**, each test a standalone binary. They assert
 physics, not pixels: Snell's angles into n=1.5 glass, the 41.81° critical
 angle, 4% reflectance at normal incidence, a vanishing p-component at
 Brewster's angle, Malus's law at five angles, the three-polarizer paradox to
 the exact eighth, BK7's Abbe number computing to its catalogue 64, a
 paraboloid focusing every zone at R/2, an ellipsoid imaging focus onto focus,
 Littrow retroreflection, and the conical invariant.
+
+The one exception is `test_gpu_layout.c`, which asserts bookkeeping rather
+than optics: the GLSL tracer reads the scene by slot number out of one `vec4`
+array, and that slot map is a hand-written copy of `HoloGpuScene`'s layout
+which no compiler checks. The test parses the shader and holds every slot to
+`offsetof`, so reordering the struct fails a test instead of quietly making
+the GPU read the camera out of the sun.
 
 ## Constraints worth knowing
 

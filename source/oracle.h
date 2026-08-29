@@ -28,4 +28,21 @@ typedef struct {
 int holo_oracle_diff(const HoloScene *scene, const HoloCamera *cam,
                      int spectral, HoloOracleStats *stats);
 
+/* Write out what a tracer OUTSIDE this process needs to be held to the same
+   oracle: the uniform block exactly as the shader receives it, and the CPU's
+   frame encoded the way holo_oracle_diff() encodes it before comparing.
+
+   This exists because the GL and Metal tracers cannot always be run where
+   they are written -- tools/gldiff renders shaders/trace.glsl in a browser
+   and compares against these two files, which is how the GLSL tracer is held
+   to the oracle from a machine with no GL toolchain at all.
+
+   Writes build/<name>_params.bin (the raw block) and build/<name>_ref.bin
+   (two int32 of width and height, then width*height*3 encoded bytes), both
+   in native byte order. gpu_scene is the block a game passes to the display,
+   with its size. Returns 1, or 0 if either file cannot be written. */
+int holo_oracle_dump(const HoloScene *scene, const HoloCamera *cam,
+                     int spectral, const void *gpu_scene, int gpu_scene_size,
+                     const char *name);
+
 #endif

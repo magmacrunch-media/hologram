@@ -20,6 +20,7 @@ static HoloGpuScene gpu;
 static HoloScene scene;
 static char shader_src[32768];
 static int diff_mode;
+static int dump_mode;
 static int frames_drawn;
 
 static const HoloV3 CAM_POS = { 0.0f, 1.5f, 5.4f };
@@ -27,11 +28,15 @@ static const HoloV3 CAM_AT  = { -1.3f, 1.15f, -8.0f };
 
 static void after_frame(void) {
     frames_drawn++;
-    if (diff_mode && frames_drawn == 5) {
+    if ((diff_mode || dump_mode) && frames_drawn == 5) {
         HoloCamera cam = holo_camera_make(
             CAM_POS, CAM_AT, hv3(0, 1, 0), 60.0f,
             (float)sapp_width() / (float)sapp_height());
         HoloOracleStats st;
+        if (dump_mode) {
+            exit(holo_oracle_dump(&scene, &cam, 0, &gpu,
+                                  sizeof gpu, "m3_mirrors") ? 0 : 1);
+        }
         int ok = holo_oracle_diff(&scene, &cam, 0, &st);
         printf("DIFF %s: %dx%d, mean err %.4f/255, max %d/255, "
                "%.3f%% pixels off by >8\n",
@@ -43,6 +48,7 @@ static void after_frame(void) {
 
 sapp_desc sokol_main(int argc, char *argv[]) {
     diff_mode = argc > 1 && strcmp(argv[1], "--diff") == 0;
+    dump_mode = argc > 1 && strcmp(argv[1], "--dump") == 0;
 
     /* A corridor along z: mirror walls at x = -2.5 and x = +2.5, open to
        the sky, a polished checker floor, and three spheres to multiply. */
@@ -87,14 +93,9 @@ sapp_desc sokol_main(int argc, char *argv[]) {
                                       60.0f, 1.0f);
     holo_gpu_scene_fill(&gpu, &scene, &cam, 0);
 
-    FILE *f = fopen("shaders\\trace.hlsl", "rb");
-    if (!f) {
-        printf("could not open shaders\\trace.hlsl -- run from the repo root\n");
+    if (!holo_load_shader(shader_src, (int)sizeof shader_src)) {
         exit(2);
     }
-    size_t n = fread(shader_src, 1, sizeof shader_src - 1, f);
-    shader_src[n] = 0;
-    fclose(f);
 
     return holo_display_app(&(HoloDisplayDesc){
         .title = "hologram m3",
