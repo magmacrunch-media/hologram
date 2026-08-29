@@ -96,21 +96,52 @@ library build and no package registry. A game is three callbacks and a scene.
 
 ### The oracle
 
-`source/cpu_trace.c` is a complete second tracer in plain C, and
-`shaders/trace.hlsl` is its statement-for-statement twin. The C version is
+`source/cpu_trace.c` is a complete second tracer in plain C, and the three
+shaders under `shaders/` are its statement-for-statement twins. The C is
 allowed to be slow and obliged to be right: every optical law lands there
 first, held by host tests to closed-form answers, and then
 `holo_oracle_diff()` reads the presented GPU frame back and compares it to a
 CPU render of the same camera.
 
 That diff is the engine's central correctness mechanism. A change that lands
-in one tracer and not the other stops being a mystery and becomes a failing
+in one tracer and not the others stops being a mystery and becomes a failing
 exit code. The bar is a mean error under 1/255 with under 0.75% of pixels off
-by more than 8/255; the whole example suite currently sits between 0.02 and
-0.12 mean.
+by more than 8/255.
 
-The catch is that only the D3D11 backend reads frames back, so on Windows the
-GL tracer cannot be held to the oracle at all. `tools/gldiff` closes that gap.
+Each cell below is that pair: mean error in 1/255 levels, then the share of
+pixels off by more than 8/255. Every one passes.
+
+| example | what it puts under the light | HLSL on D3D11 | GLSL in WebGL2 |
+|---|---|---|---|
+| `m2_gpu` | spheres, checker floor, the RGB walk | 0.1030 · 0.001% | 0.1033 · 0.001% |
+| `m3_mirrors` | facing mirrors recursing | 0.0480 · 0.001% | 0.0482 · 0.001% |
+| `m4_glass` | Fresnel, refraction, total internal reflection | 0.1161 · 0.163% | 0.1603 · 0.163% |
+| `m5_spectral` | twelve wavelengths, Cauchy dispersion | 0.1183 · 0.503% | 0.2512 · 0.498% |
+| `m6_polarization` | Stokes vectors, Mueller matrices, a waveplate | 0.0608 · 0.015% | 0.0657 · 0.015% |
+| `m7_room` | all of the above at once, spectrally | 0.0835 · 0.231% | 0.1981 · 0.238% |
+| `m8_furnace` | conic dishes, focusing at R/2 | 0.0185 · 0.022% | 0.0266 · 0.022% |
+| `m9_spectrum` | gratings, conical orders | 0.0949 · 0.025% | 0.0974 · 0.025% |
+
+The outlier percentages track each other almost exactly, which is the column
+worth reading: it says both tracers take the same branches and cull the same
+rays. The means run higher under WebGL2 only where twelve wavelengths give
+float noise room to accumulate.
+
+**What has actually been run.** The table above is the whole of it; the rest
+of the porting work is written but unproven, and should be read that way.
+
+| path | state |
+|---|---|
+| HLSL tracer, D3D11 readback | green, eight of eight |
+| GLSL tracer | green, eight of eight, through `tools/gldiff` |
+| GL readback (`glReadPixels`) | written; no GL host has run it |
+| MSL tracer | type-checks under `tools/metalcheck`; no Metal device has seen it |
+| Metal readback | written; never compiled -- it sits behind `#elif SOKOL_METAL` |
+| `build.sh` (Linux, macOS) | syntax-checked; never executed |
+
+The catch is that a readback needs the backend it runs on, and only the D3D11
+one has ever run -- so on Windows the GL tracer cannot be held to the oracle
+by `--diff` at all. `tools/gldiff` closes that gap.
 Every example that accepts `--diff` also accepts `--dump`, which writes the
 uniform block exactly as the shader receives it alongside the CPU's frame;
 `tools/gldiff/gldiff.html` then renders `shaders/trace.glsl` in a WebGL2
