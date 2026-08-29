@@ -16,6 +16,7 @@
  */
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>   /* strtol */
 #include <string.h>
 #include "harness.h"
 #include "gpu_scene.h"
