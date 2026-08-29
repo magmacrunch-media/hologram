@@ -219,3 +219,7 @@ later milestone builds on.
 - `tools/gldiff` renders `shaders/trace.glsl` in a WebGL2 context and compares
   it to the CPU oracle using oracle.c's own arithmetic and bars, which is how
   the GL tracer is held to the reference from a host with no GL toolchain.
+- `tools/metalcheck` type-checks `shaders/trace.metal` by compiling it as
+  C++14 against a `metal_stdlib` stand-in, so the MSL tracer gets some
+  verification on hosts that can neither compile nor run it. Names, arities
+  and types only; attributes, linkage and rendering still need a Mac.

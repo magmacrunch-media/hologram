@@ -127,6 +127,22 @@ not a substitute for running `--diff` natively on the backend you ship, which
 also exercises sokol's plumbing and the real driver -- but it catches the
 tracer's own bugs, which is most of them.
 
+The Metal tracer has no such luxury: off macOS it can be neither compiled nor
+run. `tools/metalcheck` gets what it can. MSL is a C++14 dialect, so the file
+is type-checked by an ordinary host compiler against a `metal_stdlib`
+stand-in:
+
+```
+python tools/metalcheck/metalcheck.py
+```
+
+That validates names, arities and types -- it will catch a `params` argument
+dropped from one of the six functions that take one, which is the mistake the
+port is likeliest to make. It says nothing about the Metal attributes, the
+linkage between the two stages, or whether the shader renders. Those need a
+Mac, and until one has run `--diff` the Metal tracer should be read as
+unproven.
+
 ### Engine modules
 
 Pure arithmetic is split from platform calls so the arithmetic is host

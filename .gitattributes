@@ -2,3 +2,4 @@
 # the shebang line fails with a "bad interpreter" that names an invisible
 # character. The rest of the tree keeps whatever the local checkout wants.
 *.sh text eol=lf
+*.py text eol=lf
