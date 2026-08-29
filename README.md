@@ -141,6 +141,7 @@ of the porting work is written but unproven, and should be read that way.
 | MSL tracer | type-checks under `tools/metalcheck`; no Metal device has seen it |
 | Metal readback | type-checks as Objective-C under `tools/metalcheck`; never built for a real SDK |
 | `build.sh` on Linux | builds and runs; tests and all eight `--diff` green |
+| Windows binary under Wine | green 8/8, once Microsoft's `d3dcompiler_47.dll` sits beside the exe -- Wine's own HLSL compiler silently miscompiles the tracer |
 | `build.sh` on macOS | never executed |
 
 The catch is that a readback needs the backend it runs on, and only the D3D11
@@ -271,6 +272,16 @@ slots instead. The CPU tracer mirrors the structure exactly, which keeps the
 oracle diff meaningful. See
 [Shader constraints](https://github.com/magmacrunchmedia/hologram/wiki/Shader-constraints)
 in the wiki for the full account.
+
+A corollary that matters for Wine and Proton: hologram compiles its HLSL at
+**runtime**, and off Windows the `D3DCompile` it calls is Wine's own HLSL
+compiler, not Microsoft's. Wine's compiler takes the 700-line tracer without
+a word of complaint and miscompiles it -- every pixel wrong, no error
+anywhere. With Microsoft's `d3dcompiler_47.dll` placed beside the exe (and,
+under bare Wine, `WINEDLLOVERRIDES="d3dcompiler_47=n"`), the same binary
+passes all eight oracle diffs through the translation stack. A Wine or
+Proton build of a hologram game must ship that DLL -- it is a Microsoft
+redistributable -- or precompile its shaders.
 
 ## Not in the engine, by design
 

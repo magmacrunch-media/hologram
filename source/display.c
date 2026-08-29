@@ -73,21 +73,34 @@ int holo_load_shader(char *buf, int buf_size) {
     return holo_load_shader_from(HOLO_SHADER_PATH, buf, buf_size);
 }
 
-/* One fullscreen triangle from the vertex id -- no vertex buffer, nothing to
-   bind. uv runs 0..1 across the visible frame with (0,0) at the TOP-left,
-   which is the corner the tracer's camera treats as the top of the image.
+/* One fullscreen triangle, fed from a real three-vertex buffer. uv runs
+   0..1 across the visible frame with (0,0) at the TOP-left, which is the
+   corner the tracer's camera treats as the top of the image.
 
-   The same clip-space expression serves every dialect: +y is up in D3D,
-   GL and Metal clip space alike, so the -2/+1 flip lands uv=(0,0) at the
-   top-left in all three. Only the spelling changes. */
+   This used to derive the triangle from SV_VertexID with no buffer bound at
+   all. The buffer was added on the suspicion that a garbled frame under
+   Wine was the bufferless draw -- and the suspicion was WRONG: the frame
+   was byte-identical before and after, and the real culprit was Wine's
+   builtin d3dcompiler miscompiling the tracer (see the Wine note in the
+   README; the fix is Microsoft's d3dcompiler_47.dll beside the exe). The
+   buffer stays anyway: 24 bytes buys the one draw-call shape every backend
+   and every translation layer treats as the common case, instead of the
+   clever one.
+
+   The buffer holds the same three grid values the id arithmetic produced --
+   (0,0), (2,0), (0,2) -- and each dialect applies the identical expression,
+   so the rasterized frame is bit-for-bit what it was: all eight oracle
+   diffs held to the same numbers across the change, on D3D11 and on GL.
+   +y is up in D3D, GL and Metal clip space alike, so the -2/+1 flip lands
+   uv=(0,0) at the top-left in all three. Only the spelling changes. */
 #if defined(SOKOL_D3D11)
 static const char *VS_SOURCE =
+    "struct vs_in { float2 grid : GRID; };\n"
     "struct vs_out { float4 pos : SV_Position; float2 uv : TEXCOORD0; };\n"
-    "vs_out main(uint vid : SV_VertexID) {\n"
+    "vs_out main(vs_in inp) {\n"
     "    vs_out o;\n"
-    "    float2 grid = float2((vid << 1) & 2, vid & 2);\n"
-    "    o.uv  = grid;\n"
-    "    o.pos = float4(grid * float2(2, -2) + float2(-1, 1), 0, 1);\n"
+    "    o.uv  = inp.grid;\n"
+    "    o.pos = float4(inp.grid * float2(2, -2) + float2(-1, 1), 0, 1);\n"
     "    return o;\n"
     "}\n";
 #elif defined(SOKOL_GLCORE) || defined(SOKOL_GLES3)
@@ -95,22 +108,22 @@ static const char *VS_SOURCE =
    the vertex stage carries its own, since it is compiled in. */
 static const char *VS_SOURCE =
     HOLO_SHADER_PREAMBLE
+    "in vec2 grid;\n"
     "out vec2 uv;\n"
     "void main() {\n"
-    "    vec2 grid = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
-    "    uv  = grid;\n"
+    "    uv = grid;\n"
     "    gl_Position = vec4(grid * vec2(2.0, -2.0) + vec2(-1.0, 1.0), 0.0, 1.0);\n"
     "}\n";
 #elif defined(SOKOL_METAL)
 static const char *VS_SOURCE =
     "#include <metal_stdlib>\n"
     "using namespace metal;\n"
+    "struct vs_in { float2 grid [[attribute(0)]]; };\n"
     "struct vs_out { float4 pos [[position]]; float2 uv [[user(locn0)]]; };\n"
-    "vertex vs_out main0(uint vid [[vertex_id]]) {\n"
+    "vertex vs_out main0(vs_in v [[stage_in]]) {\n"
     "    vs_out o;\n"
-    "    float2 grid = float2((vid << 1) & 2, vid & 2);\n"
-    "    o.uv  = grid;\n"
-    "    o.pos = float4(grid * float2(2, -2) + float2(-1, 1), 0, 1);\n"
+    "    o.uv  = v.grid;\n"
+    "    o.pos = float4(v.grid * float2(2, -2) + float2(-1, 1), 0, 1);\n"
     "    return o;\n"
     "}\n";
 #endif
@@ -118,6 +131,7 @@ static const char *VS_SOURCE =
 static struct {
     HoloDisplayDesc desc;
     sg_pipeline pip;
+    sg_buffer vbuf;
     double time;
 } state;
 
@@ -133,6 +147,14 @@ static void init_cb(void) {
     const size_t ub_size = state.desc.uniforms
                                ? (size_t)state.desc.uniforms_size
                                : sizeof(HoloDisplayUniforms);
+
+    /* The triangle's three grid corners, exactly what the id arithmetic
+       used to produce. Immutable; 24 bytes. */
+    static const float VERTS[6] = { 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 2.0f };
+    state.vbuf = sg_make_buffer(&(sg_buffer_desc){
+        .data = SG_RANGE(VERTS),
+        .label = "holo-quad-verts",
+    });
 
     sg_shader_desc sd = {
         .vertex_func.source = VS_SOURCE,
@@ -154,6 +176,7 @@ static void init_cb(void) {
     sd.vertex_func.d3d11_target = "vs_5_0";
     sd.fragment_func.d3d11_target = "ps_5_0";
     sd.uniform_blocks[0].hlsl_register_b_n = 0;
+    sd.attrs[0].hlsl_sem_name = "GRID";
 #elif defined(SOKOL_METAL)
     /* MSL has no main(); each stage is its own library, so both may use the
        same entry name. sokol asserts that one is supplied. Being separate
@@ -162,6 +185,7 @@ static void init_cb(void) {
     sd.vertex_func.entry = "main0";
     sd.fragment_func.entry = "main0";
     sd.uniform_blocks[0].msl_buffer_n = 0;
+    /* Metal matches the attribute by index; nothing to name. */
 #elif defined(SOKOL_GLCORE) || defined(SOKOL_GLES3)
     /* sokol's GL backend has no uniform buffer objects: it flattens a block
        into individual glUniform*fv calls against named uniforms, and it
@@ -177,12 +201,15 @@ static void init_cb(void) {
         .array_count = (uint16_t)(ub_size / 16),
         .glsl_name = "params",
     };
+    /* GL 4.1 and WebGL2 resolve vertex attributes by name. */
+    sd.attrs[0].glsl_name = "grid";
 #endif
 
     sg_shader shd = sg_make_shader(&sd);
 
     state.pip = sg_make_pipeline(&(sg_pipeline_desc){
         .shader = shd,
+        .layout.attrs[0].format = SG_VERTEXFORMAT_FLOAT2,
         .label = "holo-quad-pipeline",
     });
 }
@@ -215,6 +242,7 @@ void holo_display_frame(void) {
 
     sg_begin_pass(&(sg_pass){ .swapchain = sglue_swapchain() });
     sg_apply_pipeline(state.pip);
+    sg_apply_bindings(&(sg_bindings){ .vertex_buffers[0] = state.vbuf });
     sg_apply_uniforms(0, &ub);
     sg_draw(0, 3, 1);
     sg_end_pass();

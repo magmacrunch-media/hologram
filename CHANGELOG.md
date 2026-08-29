@@ -227,6 +227,20 @@ later milestone builds on.
   no-AI-attribution rule), VERSION as source of truth, Apache-2.0, host tests
   as standalone binaries under `tests/`.
 - sokol vendored under `external/sokol/` (zlib licence).
+- **The fullscreen triangle rides a real vertex buffer** instead of being
+  derived from SV_VertexID with nothing bound. Added on the suspicion that
+  the bufferless draw was what garbled the frame under Wine; the suspicion
+  was refuted -- the frame was byte-identical either way -- but the buffer
+  stays, because 24 bytes buys the draw-call shape every backend treats as
+  the common case. All eight oracle diffs held to the same numbers across
+  the change, on D3D11 and on GL.
+- **The Windows binary runs correctly under Wine**, which is the Proton
+  question in all but name, with one caveat that took an evening to find:
+  hologram compiles HLSL at runtime, Wine's builtin d3dcompiler miscompiles
+  the tracer silently (every pixel wrong, no diagnostic), and Microsoft's
+  d3dcompiler_47.dll beside the exe fixes it completely -- all eight oracle
+  diffs green through Wine, WineD3D and software GL. A Wine or Proton build
+  must ship that DLL or precompile its shaders.
 - **The Linux build runs.** `build.sh` was written but never executed; the
   first attempt found two compile stoppers -- a missing `stdlib.h` that MSVC
   had been forgiving about, and `clock_gettime` hidden from sokol by
