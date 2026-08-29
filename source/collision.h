@@ -18,7 +18,7 @@
 
 #include "linalg.h"
 
-#define HOLO_MAX_WALLS 16
+#define HOLO_MAX_WALLS 24
 
 typedef struct {
     HoloV3 min, max;
