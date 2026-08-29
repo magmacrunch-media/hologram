@@ -58,8 +58,8 @@ uniform vec4 params[115];   /* sizeof(HoloGpuScene) / 16 */
 #define sph_albedo_mirror(i)   params[18 + (i)]
 #define sph_glass(i)           params[26 + (i)]
 #define rect_corner_mirror(i)  params[34 + (i)]
-#define rect_edge_u(i)         params[42 + (i)]
-#define rect_edge_v(i)         params[50 + (i)]
+#define rect_solve_u(i)        params[42 + (i)]
+#define rect_solve_v(i)        params[50 + (i)]
 #define rect_albedo(i)         params[58 + (i)]
 #define rect_glass(i)          params[66 + (i)]
 #define rect_filter(i)         params[74 + (i)]
@@ -121,23 +121,31 @@ bool ray_sphere(vec3 ro, vec3 rd, vec3 center, float radius,
     return true;
 }
 
-/* holo_ray_rect: the plane first, then Gram-solved affine coordinates. */
-bool ray_rect(vec3 ro, vec3 rd, vec3 corner, vec3 eu, vec3 ev,
+/* holo_ray_rect_pre: the plane, then the affine coordinates read straight off
+   the panel's precomputed solve vectors. The cross, the normalize and the
+   Gram solve that used to live here are gpu_scene.c's job now -- done once
+   per panel instead of once per ray per panel.
+
+   The normal is derived here rather than shipped as a third vector. su and
+   sv both lie in the panel's plane and their cross is (edge_u x edge_v)/det
+   with det positive, so this is exactly the stored normal would have been.
+   Deriving costs a cross and a normalize; shipping would cost an indexed
+   uniform fetch per panel per ray, and measured at 64 panels the fetch is
+   the dearer of the two by a quarter of the frame. */
+bool ray_rect(vec3 ro, vec3 rd, vec3 corner, vec3 su, vec3 sv,
               out float t, out vec3 normal) {
+    vec3 n = normalize(cross(su, sv));
     t = 0.0;
-    normal = normalize(cross(eu, ev));
-    float denom = dot(normal, rd);
+    normal = n;
+    float denom = dot(n, rd);
     if (abs(denom) < 1e-8) return false;
-    t = dot(corner - ro, normal) / denom;
+    t = dot(corner - ro, n) / denom;
     if (t <= T_MIN) return false;
     vec3 rel = ro + t * rd - corner;
-    float uu = dot(eu, eu), vv = dot(ev, ev), uv_dot = dot(eu, ev);
-    float ru = dot(rel, eu), rv = dot(rel, ev);
-    float det = uu * vv - uv_dot * uv_dot;
-    float u = (ru * vv - rv * uv_dot) / det;
-    float v = (rv * uu - ru * uv_dot) / det;
+    float u = dot(rel, su);
+    float v = dot(rel, sv);
     if (u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0) return false;
-    if (denom > 0.0) normal = -normal;
+    if (denom > 0.0) normal = -n;
     return true;
 }
 
@@ -245,7 +253,7 @@ bool nearest_hit(vec3 ro, vec3 rd,
     }
     for (int j = 0; j < int(rect_count); j++) {
         if (ray_rect(ro, rd, rect_corner_mirror(j).xyz,
-                     rect_edge_u(j).xyz, rect_edge_v(j).xyz, t, n) &&
+                     rect_solve_u(j).xyz, rect_solve_v(j).xyz, t, n) &&
             t < best_t) {
             best_t = t; best_n = n;
             albedo = rect_albedo(j).xyz;
@@ -298,7 +306,7 @@ bool sun_blocked(vec3 p) {
     for (int j = 0; j < int(rect_count); j++) {
         if (rect_glass(j).x <= 0.5 && rect_filter(j).x < 0.5 &&
             ray_rect(p, sun_dir, rect_corner_mirror(j).xyz,
-                     rect_edge_u(j).xyz, rect_edge_v(j).xyz, t, n)) {
+                     rect_solve_u(j).xyz, rect_solve_v(j).xyz, t, n)) {
             return true;
         }
     }

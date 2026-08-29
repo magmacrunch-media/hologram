@@ -1,6 +1,7 @@
 /* See gpu_scene.h. */
 #include <math.h>
 #include "gpu_scene.h"
+#include "geometry.h"   /* holo_rect_basis */
 
 /* Every vector field in the block is three floats with a scalar riding in
    the fourth lane; put3 writes the three and leaves the lane alone. */
@@ -45,8 +46,15 @@ void holo_gpu_scene_fill(HoloGpuScene *gpu, const HoloScene *scene,
     for (int i = 0; i < scene->rect_count; i++) {
         put3(gpu->rect_corner_mirror[i], scene->rects[i].corner);
         gpu->rect_corner_mirror[i][3] = scene->rects[i].mirror;
-        put3(gpu->rect_edge_u[i], scene->rects[i].edge_u);
-        put3(gpu->rect_edge_v[i], scene->rects[i].edge_v);
+        /* Computed here, once, rather than in the shader once per ray. The
+           CPU tracer reaches the same numbers through holo_ray_rect, which
+           calls the same holo_rect_basis -- so the oracle and the GPU are
+           intersecting bit-for-bit the same rectangle. */
+        HoloV3 n, su, sv;   /* n is the CPU tracer's; the shader derives its own */
+        holo_rect_basis(scene->rects[i].edge_u, scene->rects[i].edge_v,
+                        &n, &su, &sv);
+        put3(gpu->rect_solve_u[i], su);
+        put3(gpu->rect_solve_v[i], sv);
         put3(gpu->rect_albedo[i], scene->rects[i].albedo);
         /* Filters and gratings never shade as matte or mirror -- their
            branches handle the light completely. Zeroing their albedo in

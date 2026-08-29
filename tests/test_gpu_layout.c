@@ -39,7 +39,7 @@ static Field fields[] = {
     F(zenith), F(floor_mirror), F(floor_a), F(sun_disk_cos),
     F(floor_b), F(sun_disk_intensity),
     F(sph_center_radius), F(sph_albedo_mirror), F(sph_glass),
-    F(rect_corner_mirror), F(rect_edge_u), F(rect_edge_v),
+    F(rect_corner_mirror), F(rect_solve_u), F(rect_solve_v),
     F(rect_albedo), F(rect_glass), F(rect_filter),
     F(dish_apex_r), F(dish_axis_k), F(dish_albedo_mirror), F(dish_rim_count),
     F(spectral_lw),

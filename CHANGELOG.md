@@ -138,6 +138,17 @@ later milestone builds on.
   The diff outlier bar moves 0.5% -> 0.75%: a dispersive ball traced at
   twelve wavelengths has twelve TIR rims of legitimate float-coin pixels.
 
+- **The rect intersection, hoisted** — `holo_ray_rect` recomputed a cross, a
+  normalize and a Gram solve on every ray against every panel, all of it
+  ray-independent. `holo_rect_basis()` now computes the two solve vectors
+  once per panel in `gpu_scene.c`, and the intersection is two dot products;
+  the shaders derive the normal from the solve vectors rather than being sent
+  it. That last part is measured, not assumed: shipping the normal as a third
+  vector was SLOWER, because in sokol's GL path (no uniform blocks, a flat
+  indexed array) one more indexed fetch costs more than the cross and
+  normalize it saves -- 15.4ms against 11.4ms at 64 panels, 640x480,
+  spectral. The block keeps its original 115 slots: the solve vectors replace
+  the edges, which no tracer wanted in the first place.
 - **A second tracer dialect** — `shaders/trace.glsl`: the HLSL tracer ported
   statement for statement into GLSL, serving GL 4.1 and GLES3/WebGL2 from one
   file (display.c prepends the version line and precision defaults). sokol's

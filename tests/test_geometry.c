@@ -176,10 +176,67 @@ static void test_dish_tilted(void) {
                 "the focus rides with the frame");
 }
 
+/* The hoisted basis must be the long form, exactly: same normal, same u and
+   v, same hit or miss on every ray. If these two ever disagree, the GPU is
+   intersecting a different rectangle than the oracle is. */
+static void test_rect_basis(void) {
+    printf("geometry: the hoisted rect basis is the long form\n");
+
+    /* A deliberately skewed panel, so the Gram terms are not degenerate and
+       an independent-projection shortcut would be caught out. */
+    HoloV3 corner = hv3(-1, 0, 0);
+    HoloV3 eu = hv3(2, 0, 0);
+    HoloV3 ev = hv3(0.7f, 1.6f, 0);
+
+    HoloV3 n, su, sv;
+    holo_rect_basis(eu, ev, &n, &su, &sv);
+
+    HoloV3 want_n = hv3_norm(hv3_cross(eu, ev));
+    check_close(n.x, want_n.x, "basis normal x");
+    check_close(n.y, want_n.y, "basis normal y");
+    check_close(n.z, want_n.z, "basis normal z");
+    check_close(hv3_dot(n, n), 1.0f, "basis normal is unit");
+
+    /* solve_u and solve_v must read off the affine coordinates of a point
+       built from known u and v. */
+    float want_u = 0.3f, want_v = 0.8f;
+    HoloV3 rel = hv3_add(hv3_scale(eu, want_u), hv3_scale(ev, want_v));
+    check_close(hv3_dot(rel, su), want_u, "solve_u reads u back");
+    check_close(hv3_dot(rel, sv), want_v, "solve_v reads v back");
+
+    /* An edge vector alone must read as u=1,v=0 and u=0,v=1 -- the corners
+       of the unit square the inside test compares against. */
+    check_close(hv3_dot(eu, su), 1.0f, "edge_u is u=1");
+    check_close(hv3_dot(eu, sv), 0.0f, "edge_u is v=0");
+    check_close(hv3_dot(ev, su), 0.0f, "edge_v is u=0");
+    check_close(hv3_dot(ev, sv), 1.0f, "edge_v is v=1");
+
+    /* And the two intersectors must agree ray for ray, hits and misses
+       alike, including rays that graze just outside the edges. */
+    for (int i = 0; i < 25; i++) {
+        float fu = -0.2f + 0.06f * (float)(i % 5) * 5.0f;
+        float fv = -0.2f + 0.06f * (float)(i / 5) * 5.0f;
+        HoloV3 target = hv3_add(corner,
+                                hv3_add(hv3_scale(eu, fu), hv3_scale(ev, fv)));
+        HoloV3 origin = hv3(target.x, target.y, 4.0f);
+        HoloRay r = { origin, hv3_norm(hv3_sub(target, origin)) };
+
+        HoloHit a, b;
+        int hit_a = holo_ray_rect(r, corner, eu, ev, &a);
+        int hit_b = holo_ray_rect_pre(r, corner, n, su, sv, &b);
+        check_int(hit_b, hit_a, "hoisted and long form agree on hit or miss");
+        if (hit_a && hit_b) {
+            check_close(b.t, a.t, "hoisted and long form agree on t");
+            check_close(b.normal.z, a.normal.z, "and on the facing normal");
+        }
+    }
+}
+
 int main(void) {
     test_sphere();
     test_plane();
     test_rect();
+    test_rect_basis();
     test_dish_paraboloid();
     test_dish_ellipsoid();
     test_dish_tilted();

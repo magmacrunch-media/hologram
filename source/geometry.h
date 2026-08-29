@@ -37,6 +37,25 @@ int holo_ray_plane(HoloRay r, HoloV3 point, HoloV3 normal, HoloHit *hit);
 int holo_ray_rect(HoloRay r, HoloV3 corner, HoloV3 edge_u, HoloV3 edge_v,
                   HoloHit *hit);
 
+/* Everything about a rectangle that does not depend on the ray: the unit
+   normal, and the two vectors that turn a point on the plane into affine u
+   and v with one dot product each.
+
+   holo_ray_rect recomputes these on every call, which means every ray
+   against every panel: a cross, a normalize and five dot products of work
+   that only depends on the panel. A renderer with more than a couple of
+   mirrors wants them hoisted -- gpu_scene.c computes them once and ships
+   them in the uniform block, and the tracers use holo_ray_rect_pre.
+
+   solve_u and solve_v are the Gram solve folded flat: where the long form
+   computes ru, rv and det and divides, u is just dot(rel, solve_u). */
+void holo_rect_basis(HoloV3 edge_u, HoloV3 edge_v,
+                     HoloV3 *normal, HoloV3 *solve_u, HoloV3 *solve_v);
+
+/* holo_ray_rect against a panel whose basis is already in hand. */
+int holo_ray_rect_pre(HoloRay r, HoloV3 corner, HoloV3 normal,
+                      HoloV3 solve_u, HoloV3 solve_v, HoloHit *hit);
+
 /* A dish: a cap of a conic of revolution, in the language optical design
    quotes them -- apex point, axis (unit, pointing out of the bowl), vertex
    radius of curvature R, conic constant K (0 a sphere, -1 a paraboloid,

@@ -30,8 +30,14 @@ typedef struct {
     float sph_albedo_mirror[HOLO_MAX_SPHERES][4];   /* xyz albedo, w mirror */
     float sph_glass[HOLO_MAX_SPHERES][4];           /* x transmit, y ior, z disperse */
     float rect_corner_mirror[HOLO_MAX_RECTS][4];    /* xyz corner, w mirror */
-    float rect_edge_u[HOLO_MAX_RECTS][4];
-    float rect_edge_v[HOLO_MAX_RECTS][4];
+    /* The panel's ray-independent basis, from holo_rect_basis(): the unit
+       two vectors that read affine u and v off a point with
+       one dot product each. The edges themselves never reach the GPU -- the
+       tracers only ever wanted these. Hoisting them out of the intersection
+       removes a cross, a normalize and five dots from every ray-versus-panel
+       test, which in a room of mirrors is the innermost loop there is. */
+    float rect_solve_u[HOLO_MAX_RECTS][4];          /* xyz, u = dot(rel, .) */
+    float rect_solve_v[HOLO_MAX_RECTS][4];          /* xyz, v = dot(rel, .) */
     float rect_albedo[HOLO_MAX_RECTS][4];
     float rect_glass[HOLO_MAX_RECTS][4];            /* x transmit, y ior, z disperse, w retard */
     /* x mode (0 none / 1 polarizer / 2 waveplate / 3 grating), yzw the

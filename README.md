@@ -118,9 +118,9 @@ pixels off by more than 8/255. Every one passes.
 | `m4_glass` | Fresnel, refraction, total internal reflection | 0.1161 · 0.163% | 0.1603 · 0.163% |
 | `m5_spectral` | twelve wavelengths, Cauchy dispersion | 0.1183 · 0.503% | 0.2512 · 0.498% |
 | `m6_polarization` | Stokes vectors, Mueller matrices, a waveplate | 0.0608 · 0.015% | 0.0657 · 0.015% |
-| `m7_room` | all of the above at once, spectrally | 0.0835 · 0.231% | 0.1981 · 0.238% |
+| `m7_room` | all of the above at once, spectrally | 0.0834 · 0.230% | 0.1976 · 0.236% |
 | `m8_furnace` | conic dishes, focusing at R/2 | 0.0185 · 0.022% | 0.0266 · 0.022% |
-| `m9_spectrum` | gratings, conical orders | 0.0949 · 0.025% | 0.0974 · 0.025% |
+| `m9_spectrum` | gratings, conical orders | 0.0949 · 0.025% | 0.0973 · 0.025% |
 
 The outlier percentages track each other almost exactly, which is the column
 worth reading: it says both tracers take the same branches and cull the same
@@ -200,7 +200,7 @@ testable, the discipline magnolia's `timestep.c` was extracted for.
 build.bat test
 ```
 
-**313 checks across 8 suites**, each test a standalone binary. They assert
+**382 checks across 8 suites**, each test a standalone binary. They assert
 physics, not pixels: Snell's angles into n=1.5 glass, the 41.81° critical
 angle, 4% reflectance at normal incidence, a vanishing p-component at
 Brewster's angle, Malus's law at five angles, the three-polarizer paradox to
