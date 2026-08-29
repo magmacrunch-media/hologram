@@ -146,6 +146,15 @@ later milestone builds on.
   slot, with accessor macros restoring the field names; that slot map is held
   to `offsetof(HoloGpuScene, ...)` by `tests/test_gpu_layout.c`. Agrees with
   the oracle on all eight example scenes.
+- **A third tracer dialect** — `shaders/trace.metal`, ported from the GLSL.
+  MSL has no global uniforms, so the scene is threaded into the six
+  functions that read it as a `constant float4 *params` argument; the
+  bodies are unchanged, because the accessor macros only need something
+  called `params` in scope. The varying carries `[[user(locn0)]]` on both
+  sides since sokol compiles the two stages as separate Metal libraries,
+  which match by attribute rather than by name. Type-checked as C++14
+  against a `metal_stdlib` stand-in, but no Metal device has compiled or
+  run it yet, and there is no macOS build to run it with.
 - **Backend-agnostic display** — `source/display.c` now picks the shader
   dialect, vertex stage, compile targets and uniform-block description from
   the backend macro, loads the tracer through `holo_load_shader()` rather than

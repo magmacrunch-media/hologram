@@ -101,7 +101,7 @@ static const char *VS_SOURCE =
 static const char *VS_SOURCE =
     "#include <metal_stdlib>\n"
     "using namespace metal;\n"
-    "struct vs_out { float4 pos [[position]]; float2 uv; };\n"
+    "struct vs_out { float4 pos [[position]]; float2 uv [[user(locn0)]]; };\n"
     "vertex vs_out main0(uint vid [[vertex_id]]) {\n"
     "    vs_out o;\n"
     "    float2 grid = float2((vid << 1) & 2, vid & 2);\n"
@@ -152,7 +152,9 @@ static void init_cb(void) {
     sd.uniform_blocks[0].hlsl_register_b_n = 0;
 #elif defined(SOKOL_METAL)
     /* MSL has no main(); each stage is its own library, so both may use the
-       same entry name. sokol asserts that one is supplied. */
+       same entry name. sokol asserts that one is supplied. Being separate
+       libraries is also why the varying carries [[user(locn0)]] on both
+       sides: across libraries Metal matches by attribute, not name. */
     sd.vertex_func.entry = "main0";
     sd.fragment_func.entry = "main0";
     sd.uniform_blocks[0].msl_buffer_n = 0;

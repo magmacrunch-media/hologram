@@ -30,7 +30,8 @@ source/                 engine modules, one .c/.h pair each; pure arithmetic is
                         split from platform calls so it can be host-tested
                         (timestep.c is ported verbatim from magnolia and keeps
                         that discipline)
-shaders/                shader source (per-backend for now; sokol-shdc later)
+shaders/                shader source, one file per dialect (HLSL, GLSL, MSL);
+                        each is a statement-for-statement twin of cpu_trace.c
 external/sokol/         vendored sokol headers (zlib licence, see LICENSE there)
 tests/                  host-side tests + harness.h; each test is its own binary
 examples/               one runnable demo per milestone

@@ -81,8 +81,11 @@ to release the mouse.
 
 ## Architecture
 
-- **C99 engine, HLSL shader**, on [sokol](https://github.com/floooh/sokol)
-  (vendored, zlib licence) for the window, GPU device and swapchain.
+- **C99 engine, one tracer in three dialects** (HLSL for D3D11, GLSL for GL
+  and GLES3/WebGL2, MSL for Metal), on [sokol](https://github.com/floooh/sokol)
+  (vendored, zlib licence) for the window, GPU device and swapchain. Only the
+  D3D11 path has shipped: the GLSL tracer is oracle-green under WebGL2, and
+  the Metal one has not yet met a Metal device.
 - **The tracing runs on the GPU** as a fullscreen-quad fragment shader over a
   scene of analytic primitives delivered in one uniform block.
 - **Fixed-timestep simulation** (`source/timestep.c`, ported verbatim from
