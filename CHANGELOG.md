@@ -158,8 +158,10 @@ later milestone builds on.
 - **Backend-agnostic display** — `source/display.c` now picks the shader
   dialect, vertex stage, compile targets and uniform-block description from
   the backend macro, loads the tracer through `holo_load_shader()` rather than
-  eight copies of an `fopen`, and reads frames back on GL as well as D3D11 so
-  the oracle survives leaving Windows.
+  eight copies of an `fopen`, and reads frames back on GL (`glReadPixels`) and
+  Metal (blit to a shared staging texture, then `getBytes`) as well as D3D11,
+  so the oracle survives leaving Windows. Only the D3D11 readback has ever
+  run; the other two are written and untested.
 - **The oracle, exported** — `holo_oracle_dump()` writes a comparison's inputs
   to disk (the uniform block as the shader receives it, and the CPU's encoded
   frame), so a tracer that cannot run in this process can still be held to the

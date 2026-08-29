@@ -36,12 +36,23 @@
  *
  * ---------------------------------------------------------------------------
  * Status: NOT yet held to the oracle. This file was written from the GLSL
- * tracer, which is oracle-green on all eight example scenes, but no Metal
- * device has compiled or run it. Before trusting it, on a Mac:
+ * tracer, which is oracle-green on all eight example scenes, and it
+ * type-checks under tools/metalcheck -- but no Metal device has compiled or
+ * run it, and nothing here has been proven to draw a correct pixel.
  *
+ * On a Mac, in this order:
+ *
+ *     xcrun -sdk macosx metal -c shaders/trace.metal -o /dev/null
  *     ./build.sh && ./build/m7_room --diff
  *
- * and expect the numbers in the m7_room row of the README's oracle table.
+ * The compile comes first because it is the step that fails loudly and
+ * cheaply. Then --diff, which should report the numbers in the m7_room row
+ * of the README's oracle table.
+ *
+ * The Metal frame readback --diff depends on (source/display.c) is itself
+ * unrun: it was written on a machine that cannot compile it. If --diff fails
+ * with a readback error rather than a pixel difference, suspect that first,
+ * not this file.
  */
 
 #include <metal_stdlib>

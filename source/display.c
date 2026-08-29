@@ -316,6 +316,98 @@ int holo_display_read_frame(unsigned char *rgba, int w, int h) {
     }
     return 1;
 }
+#elif defined(SOKOL_METAL)
+/* Blit the drawable into a shared-storage staging texture, wait, and read it.
+   A drawable's own texture is private storage, so getBytes cannot touch it
+   directly -- the copy is what makes it host-visible.
+
+   This runs from after_frame, which display.c calls once sg_commit() has
+   handed the frame's command buffer to sokol's queue but before sokol_app
+   presents, so the drawable still holds the frame just drawn.
+
+   The blit goes on a queue of our own, because sokol exposes its device but
+   not its command queue, and Metal orders work within a queue rather than
+   across queues. That is a real gap in the general case. It is harmless for
+   the only caller: the oracle diffs a still scene several frames in, so
+   every frame in flight carries identical pixels, and capturing the previous
+   one instead of the current one is a difference without a difference. Do
+   not reach for this to read back a moving frame -- it would need sokol's
+   own queue, or a completion handler on its command buffer.
+
+   Objective-C, because on macOS this translation unit is compiled as such
+   (build.sh passes -x objective-c -fobjc-arc for exactly this). */
+#import <Metal/Metal.h>
+#import <QuartzCore/CAMetalLayer.h>
+
+static id<MTLCommandQueue> holo_mtl_queue = nil;
+
+int holo_display_read_frame(unsigned char *rgba, int w, int h) {
+    if (w != sapp_width() || h != sapp_height()) {
+        return 0;
+    }
+    id<MTLDevice> dev = (__bridge id<MTLDevice>)sg_mtl_device();
+    id<CAMetalDrawable> drawable =
+        (__bridge id<CAMetalDrawable>)sapp_metal_get_current_drawable();
+    if (dev == nil || drawable == nil) {
+        return 0;
+    }
+    id<MTLTexture> src = drawable.texture;
+    if (src == nil || (int)src.width != w || (int)src.height != h) {
+        return 0;
+    }
+    if (holo_mtl_queue == nil) {
+        holo_mtl_queue = [dev newCommandQueue];
+        if (holo_mtl_queue == nil) {
+            return 0;
+        }
+    }
+
+    MTLTextureDescriptor *desc = [MTLTextureDescriptor
+        texture2DDescriptorWithPixelFormat:src.pixelFormat
+                                     width:(NSUInteger)w
+                                    height:(NSUInteger)h
+                                 mipmapped:NO];
+    desc.storageMode = MTLStorageModeShared;
+    desc.usage = MTLTextureUsageShaderRead;
+    id<MTLTexture> staging = [dev newTextureWithDescriptor:desc];
+    if (staging == nil) {
+        return 0;
+    }
+
+    id<MTLCommandBuffer> cb = [holo_mtl_queue commandBuffer];
+    id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+    [blit copyFromTexture:src
+              sourceSlice:0
+              sourceLevel:0
+             sourceOrigin:MTLOriginMake(0, 0, 0)
+               sourceSize:MTLSizeMake((NSUInteger)w, (NSUInteger)h, 1)
+                toTexture:staging
+         destinationSlice:0
+         destinationLevel:0
+        destinationOrigin:MTLOriginMake(0, 0, 0)];
+    [blit endEncoding];
+    [cb commit];
+    [cb waitUntilCompleted];
+    if (cb.status != MTLCommandBufferStatusCompleted) {
+        return 0;
+    }
+
+    [staging getBytes:rgba
+          bytesPerRow:(NSUInteger)w * 4
+           fromRegion:MTLRegionMake2D(0, 0, (NSUInteger)w, (NSUInteger)h)
+          mipmapLevel:0];
+
+    /* The swapchain is BGRA8, as it is under D3D11; the caller wants RGBA. */
+    if (src.pixelFormat == MTLPixelFormatBGRA8Unorm ||
+        src.pixelFormat == MTLPixelFormatBGRA8Unorm_sRGB) {
+        for (int i = 0; i < w * h; i++) {
+            unsigned char b = rgba[4 * i + 0];
+            rgba[4 * i + 0] = rgba[4 * i + 2];
+            rgba[4 * i + 2] = b;
+        }
+    }
+    return 1;
+}
 #else
 int holo_display_read_frame(unsigned char *rgba, int w, int h) {
     (void)rgba; (void)w; (void)h;
