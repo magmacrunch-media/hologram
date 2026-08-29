@@ -252,7 +252,11 @@ later milestone builds on.
   interval and with it off the CPU runs ahead of the GPU; on backends with no
   GPU clock it falls back and says so. It has already overruled intuition
   once, on whether to ship the rect normal or derive it.
-- `tools/metalcheck` type-checks `shaders/trace.metal` by compiling it as
-  C++14 against a `metal_stdlib` stand-in, so the MSL tracer gets some
-  verification on hosts that can neither compile nor run it. Names, arities
-  and types only; attributes, linkage and rendering still need a Mac.
+- `tools/metalcheck` type-checks both halves of the Metal side on hosts that
+  can neither compile nor run them: `shaders/trace.metal` as C++14 against a
+  `metal_stdlib` stand-in, and the frame readback in `display.c` as
+  Objective-C with ARC against a Metal stand-in, which needs clang because
+  gcc's Objective-C has no ARC. Names, arities, types, selectors and bridge
+  casts; whether those selectors are Apple's, whether the attributes are
+  right, whether the stages link and whether any of it renders still need a
+  Mac.

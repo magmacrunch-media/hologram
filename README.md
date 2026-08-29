@@ -139,7 +139,7 @@ of the porting work is written but unproven, and should be read that way.
 | GLSL tracer | green, eight of eight, natively on Linux GL and through `tools/gldiff` |
 | GL readback (`glReadPixels`) | green -- it is what the native Linux `--diff` reads |
 | MSL tracer | type-checks under `tools/metalcheck`; no Metal device has seen it |
-| Metal readback | written; never compiled -- it sits behind `#elif SOKOL_METAL` |
+| Metal readback | type-checks as Objective-C under `tools/metalcheck`; never built for a real SDK |
 | `build.sh` on Linux | builds and runs; tests and all eight `--diff` green |
 | `build.sh` on macOS | never executed |
 
@@ -162,21 +162,24 @@ not a substitute for running `--diff` natively on the backend you ship, which
 also exercises sokol's plumbing and the real driver -- but it catches the
 tracer's own bugs, which is most of them.
 
-The Metal tracer has no such luxury: off macOS it can be neither compiled nor
-run. `tools/metalcheck` gets what it can. MSL is a C++14 dialect, so the file
-is type-checked by an ordinary host compiler against a `metal_stdlib`
-stand-in:
+The Metal side has no such luxury: off macOS neither the tracer nor the frame
+readback can be compiled, let alone run. `tools/metalcheck` gets what it can.
+MSL is a C++14 dialect and the readback is Objective-C, so with stand-ins for
+the headers a host compiler will parse and type-check both -- the shader with
+any C++ compiler, the readback with clang, which has the ARC support gcc
+lacks:
 
 ```
 python tools/metalcheck/metalcheck.py
 ```
 
-That validates names, arities and types -- it will catch a `params` argument
-dropped from one of the six functions that take one, which is the mistake the
-port is likeliest to make. It says nothing about the Metal attributes, the
-linkage between the two stages, or whether the shader renders. Those need a
-Mac, and until one has run `--diff` the Metal tracer should be read as
-unproven.
+That validates names, arities, types, selectors and bridge casts -- it will
+catch a `params` argument dropped from one of the six functions that take
+one, or a misspelled Metal selector, which are the mistakes this port is
+likeliest to make. It says nothing about whether the selectors match Apple's
+real ones, whether the Metal attributes are right, whether the two stages
+link, or whether any of it renders. Those need a Mac, and until one has run
+`--diff` the whole Metal path should be read as unproven.
 
 ### What a panel costs
 

@@ -37,8 +37,9 @@ tests/                  host-side tests + harness.h; each test is its own binary
 examples/               one runnable demo per milestone
 tools/                  dev tools that are not the engine: gldiff holds the
                         GLSL tracer to the oracle in a browser; metalcheck
-                        type-checks the MSL tracer as C++ (both exist so a
-                        dialect can be verified away from its own platform);
+                        type-checks the MSL tracer as C++ and the Metal
+                        readback as Objective-C (both exist so a dialect can
+                        be verified away from its own platform);
                         bench times the GPU per panel, and A/Bs one tracer
                         against another on real hardware
 build.bat               Windows build (finds vcvars64, builds examples + tests)

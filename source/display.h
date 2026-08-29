@@ -10,8 +10,8 @@
  * the uniform contents.
  *
  * The design resolution follows the games: 640x480, scaled to whatever the
- * window really is. holo_display_uniforms() reports the real pixel size; the
- * shader letterboxes from there.
+ * window really is. The HoloDisplayUniforms block below carries the real
+ * pixel size, refreshed every frame; the shader letterboxes from there.
  */
 
 struct sapp_event;
