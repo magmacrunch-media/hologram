@@ -13,7 +13,7 @@ magmacrunch music.
 
 Current version: **0.2.0** in progress; **v0.1.0** is the first tagged
 release (see [CHANGELOG.md](CHANGELOG.md)). The full
-reference lives in the [wiki](https://github.com/magmacrunchmedia/hologram/wiki).
+reference lives in the [wiki](https://github.com/magmacrunch-media/hologram/wiki).
 
 ![Two ruled panels diffracting sunlight into their orders](docs/images/m9-gratings.png)
 
@@ -91,7 +91,7 @@ to release the mouse.
 - **The tracing runs on the GPU** as a fullscreen-quad fragment shader over a
   scene of analytic primitives delivered in one uniform block.
 - **Fixed-timestep simulation** (`source/timestep.c`, ported verbatim from
-  [magnolia](https://github.com/magmacrunchmedia/magnolia)).
+  [magnolia](https://github.com/magmacrunch-media/magnolia)).
 
 Games compile the engine's sources directly, magnolia-style; there is no
 library build and no package registry. A game is three callbacks and a scene.
@@ -272,7 +272,7 @@ Per-grating data also cannot live in dynamically indexed constant-buffer
 arrays for the same reason, so the grating constants sit in scalar uniform
 slots instead. The CPU tracer mirrors the structure exactly, which keeps the
 oracle diff meaningful. See
-[Shader constraints](https://github.com/magmacrunchmedia/hologram/wiki/Shader-constraints)
+[Shader constraints](https://github.com/magmacrunch-media/hologram/wiki/Shader-constraints)
 in the wiki for the full account.
 
 A corollary that matters for Wine and Proton: hologram compiles its HLSL at
