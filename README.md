@@ -324,6 +324,13 @@ server. See `editor/README.md` for what that panel does and does not
 claim, and for a difference between oracle.c's mean and gldiff's that the
 table below inherits.
 
+Scenes edited in it are saved with Ctrl+S -- to a file you pick, never over
+the dump, whose params.bin and ref.bin belong to the scene as it was and
+are what the editor's own checks are held to. The saved format is this
+one, byte for byte, so the editor opens its own output the way it opens a
+dump. No desktop wrapper: a page can write a file the person chose, and
+keep the handle.
+
 On the examples that have a walker it also walks: holo_walk_step at the
 same 120 Hz, with the eyes where a player's are, so the room can answer
 whether a sightline is one a player can actually stand in. The walls come

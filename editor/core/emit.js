@@ -40,17 +40,33 @@
      * The suffix matters beyond tidiness. Without it every literal is a
      * double, the initialiser promotes, and the value the game compiles is
      * not bit-for-bit the value the editor rendered. */
-    function fl(n) {
-        if (!isFinite(n)) { return '0.0f'; }
+    /* The number alone, at that shortest spelling. Shared with core/save.js,
+       which writes JSON and so wants the digits without C's suffix.
+     *
+       Spelled the way C's %g spells it, in two details that do not change
+       the value and do change the text. printf pads an exponent to at least
+       two digits (e-08, not e-8), and prints negative zero with its sign,
+       while String(-0) in JavaScript is "0". Matching both is what lets a
+       saved scene be diffed against the dump it came from and show only the
+       edits. */
+    function num(n) {
+        if (!isFinite(n)) { return '0'; }
         var v = Math.fround(n);
-        var s = String(v);
-        for (var p = 1; p <= 9; p++) {
+        var s = null;
+        for (var p = 1; p <= 9 && s === null; p++) {
             var t = v.toPrecision(p);
             if (Math.fround(parseFloat(t)) === v) {
                 s = String(parseFloat(t));
-                break;
             }
         }
+        if (s === null) { s = String(v); }
+        if (s === '0' && Object.is(v, -0)) { s = '-0'; }
+        return s.replace(/e([+-])(\d)$/, 'e$10$2');
+    }
+
+    function fl(n) {
+        if (!isFinite(n)) { return '0.0f'; }
+        var s = num(n);
         if (s.indexOf('e') >= 0 || s.indexOf('E') >= 0) { return s + 'f'; }
         if (s.indexOf('.') < 0) { s += '.0'; }
         return s + 'f';
@@ -229,5 +245,5 @@
             ', ' + (aspect ? fl(aspect) : 'aspect') + ');\n';
     }
 
-    root.emit = { toC: toC, cameraToC: cameraToC, fl: fl };
+    root.emit = { toC: toC, cameraToC: cameraToC, fl: fl, num: num };
 }(window.Hologram = window.Hologram || {}));

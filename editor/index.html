@@ -34,11 +34,21 @@
     <button id="emit-copy" hidden>copy</button>
     <button id="oracle-toggle"
             title="hold trace.glsl to the CPU reference">oracle</button>
+    <button id="open" title="open a saved scene  (Ctrl+O)">open</button>
+    <button id="save" title="save  (Ctrl+S)">save</button>
+    <button id="save-as" title="save to a new file  (Ctrl+Shift+S)">save as</button>
+    <span id="file-name" class="scene"></span>
   </span>
   <span id="lock-hint" class="hint">click the view to look around</span>
 </header>
 
 <p id="banner">loading…</p>
+<p id="file-status" class="note"></p>
+<p id="detached" class="warnline" hidden></p>
+<p id="draft-row" class="draftrow" hidden>
+  Restored an unsaved draft from <span id="draft-when">—</span>.
+  <button id="discard-draft">discard and reload the dump</button>
+</p>
 <pre id="error" hidden></pre>
 
 <textarea id="emit" spellcheck="false" hidden></textarea>
@@ -129,6 +139,7 @@
 <script src="core/scene.js"></script>
 <script src="core/schema.js"></script>
 <script src="core/emit.js"></script>
+<script src="core/save.js"></script>
 <script src="core/oracle.js"></script>
 <script src="core/sweep.js"></script>
 <script src="core/timestep.js"></script>
@@ -139,4 +150,5 @@
 <script src="ui/bench.js"></script>
 <script src="ui/oraclepanel.js"></script>
 <script src="ui/sweeppanel.js"></script>
+<script src="ui/files.js"></script>
 <script src="ui/main.js"></script>

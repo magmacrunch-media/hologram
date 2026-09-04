@@ -316,6 +316,27 @@
                 savedRevision = history.revision();
                 syncDirty();
             },
+            /* For a restored draft: the document differs from the file it
+               was loaded from, and every panel that cares should know. */
+            markDirty: function () {
+                savedRevision = history.revision() - 1;
+                syncDirty();
+            },
+            /* Swap in a different scene, keeping the SAME object -- every
+               panel holds this one by reference, so replacing it wholesale
+               would leave them all editing the document nobody can see. */
+            replace: function (next, keepHistory) {
+                if (!keepHistory) {
+                    history.clear();
+                    savedRevision = history.revision();
+                } else {
+                    history.push();
+                }
+                Object.keys(doc).forEach(function (k) { delete doc[k]; });
+                Object.keys(next).forEach(function (k) { doc[k] = next[k]; });
+                sel = null;
+                renderAll();
+            },
             isDirty: function () { return history.revision() !== savedRevision; }
         };
     }

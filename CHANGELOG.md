@@ -128,6 +128,29 @@ Walking, and `source/walk_json.c`.
   float the same way. walk_json.h joins the umbrella header, since unlike
   scene_json it is called from a game's own main.
 
+Saving, without a desktop wrapper after all.
+
+- Ctrl+S saves, Ctrl+Shift+S saves elsewhere, Ctrl+O opens. The first
+  save asks where and the rest are silent, because the File System Access
+  API hands back a file handle -- which is most of what the desktop
+  wrapper was wanted for here. Where it is missing a save falls back to a
+  download, and says so rather than pretending.
+- Every edit also writes a draft to localStorage, restored on load, so a
+  closed tab does not lose work that never reached a file.
+- A save never overwrites build/<name>_scene.json. That file is what
+  --dump produced and the params.bin and ref.bin beside it are renders OF
+  it; an edited scene written over it would leave the packer banner and
+  the oracle panel reporting confident verdicts about a different room.
+  The packer check now runs against the scene as fetched rather than the
+  one being edited, a saved file records that the editor wrote it, and a
+  document carrying that mark reports UNCHECKED and no reference instead
+  of inventing an answer.
+- The saved format is scene_json.c's, to the byte: serialising each of
+  the eight dumped scenes and stripping the provenance block reproduces
+  the C-written file exactly. Two spellings had to be matched to get
+  there -- printf pads an exponent to two digits where JavaScript does
+  not, and prints negative zero with its sign where String(-0) is "0".
+
 The game release: whatever Crystal Mirror Maze development asks of the
 engine lands here.
 

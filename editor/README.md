@@ -21,6 +21,7 @@ not this directory — the page reads the engine's files one level up.
 | `W` `A` `S` `D` | move |
 | `Q` `E` | down / up |
 | `shift` | faster |
+| `Ctrl+S` / `Ctrl+Shift+S` / `Ctrl+O` | save / save as / open |
 | `R` | back to the scene's own camera |
 | `F` | look at the selected primitive |
 | `P` | spectral on/off |
@@ -104,6 +105,58 @@ block `--dump` wrote. Its header has the command.
 round trip: 840 of 840 floats identical
 EMITTER OK: byte-identical
 ```
+
+## Saving
+
+`Ctrl+S` saves, `Ctrl+Shift+S` saves to a new file, `Ctrl+O` opens one. The
+first save asks where; every save after it is silent, because the browser
+keeps the file handle. No desktop wrapper is involved — the File System
+Access API does this from a plain page, and where it is missing (Firefox,
+Safari) a save falls back to a download, which lands in the downloads folder
+rather than where you asked. That difference is stated in the status line
+rather than papered over.
+
+Independently of either, **every edit writes a draft to localStorage**, so a
+closed tab or an accidental reload does not lose work that was never saved
+to a file. The draft is restored on load with a note saying when it was
+taken and a button to discard it and go back to the dump.
+
+### A save does not overwrite the dump
+
+`build/<name>_scene.json` is what `--dump` produced, and `_params.bin` and
+`_ref.bin` beside it are renders **of that scene**. The packer banner and the
+oracle panel are both checked against them. Write an edited scene over it and
+both would go on reporting confident verdicts about a room that is not the
+one on screen — a red PACKER FAIL that is not a packer problem, and a diff
+between two different scenes.
+
+So a save goes wherever you point it, the dump stays the dump, and three
+things keep the checks honest:
+
+- The packer check runs against the scene **as fetched**, not the one being
+  edited. It is a check on the packer and has to go on meaning that after an
+  edit or a restored draft.
+- A saved file records `"editor": { "edited": 1, "origin": ... }`, and a
+  document carrying it — or one opened from a file — shows a warning saying
+  its references belong to whatever was last dumped. Load one and the packer
+  reports `UNCHECKED`, the oracle reports `no reference for this scene`, and
+  neither invents a verdict.
+- The oracle panel already says, separately, when the scene has been edited
+  since load.
+
+### The format is the C's, exactly
+
+A saved file is `hologram/scene/1` — the same format `source/scene_json.c`
+writes, down to key order, indentation and float spelling — so the editor
+opens its own output the way it opens a dump.
+
+That is checked rather than asserted: serialising each of the eight dumped
+scenes and stripping the provenance block reproduces the C-written file
+**byte for byte**. Getting there needed two details that do not change a
+value and do change the text — `printf` pads an exponent to two digits
+(`e-08`, where JavaScript writes `e-8`), and prints negative zero with its
+sign, where `String(-0)` is `"0"`. Matching both is what lets a saved scene
+be diffed against the dump it came from and show only the edits.
 
 ## Walking
 
@@ -361,6 +414,7 @@ core/     pure: no DOM, no WebGL
   scene.js      holo_gpu_scene_fill, the layout table, the conformance check
   schema.js     what a primitive's fields are, and what they mean
   emit.js       scene -> HoloScene C
+  save.js       scene -> hologram/scene/1 JSON, and drafts
   oracle.js     holo_oracle_diff's arithmetic
   sweep.js      the probe, and what a sweep measures
   collision.js  holo_walk_step, and the trace that checks it
@@ -372,6 +426,7 @@ ui/
   bench.js      the list, selection, add/delete, undo, the C panel
   oraclepanel.js  GPU, CPU, difference
   sweeppanel.js   the probe overlay, the sweep, the plot
+  files.js      save, save as, open, and the download fallback
   main.js       loading, the frame loop, input
 vendor/
   history.js    magma-kit's undo stack, copied — see PROVENANCE.md
@@ -387,11 +442,6 @@ works in the precision the GPU will, and rounding only at the end gives a
 different answer from rounding at every step.
 
 ## Not here yet
-
-**No saving.** Edits live in the page and leave as C through the panel;
-reloading loses them. A browser cannot write `build/<name>_scene.json` back,
-and the "edited" marker in the header is honest about what that means. This
-is the one place the no-desktop-wrapper choice actually costs something.
 
 **No dragging in the view.** Placement is numeric. A gizmo needs the tracer
 to say which primitive a pixel belongs to, which the tracer does not report

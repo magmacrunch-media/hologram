@@ -60,7 +60,11 @@
        spectral flag -- and hold the result to the block C wrote. This is the
        check that makes core/scene.js trustworthy; see its header. */
     function runConformance(golden) {
-        var doc = state.doc;
+        /* The scene AS FETCHED, not the one being edited. This is a check on
+           the packer, and it must go on meaning that after an edit or a
+           restored draft -- packing something else and comparing it to
+           params.bin would report a packer failure about a different room. */
+        var doc = state.pristine;
         var cam = doc.camera;
         var camBasis = {
             pos: root.linalg.fromArray(cam.pos),
@@ -72,6 +76,15 @@
         };
         var packed = root.scene.pack(doc, camBasis, doc.spectral);
         return root.scene.conformance(new Float32Array(golden), packed);
+    }
+
+    /* A document opened from a file, or one whose dump the editor has since
+       edited, has no params.bin or ref.bin belonging to it. Say so once,
+       loudly, rather than letting two panels report confident verdicts about
+       a room that is not this one. */
+    function isDetached() {
+        return !!(state.doc && state.doc.editor && state.doc.editor.edited) ||
+               state.fromFile;
     }
 
     function showConformance(c) {
@@ -112,6 +125,78 @@
         }).join('');
         $('packer-detail').innerHTML = rows ||
             '<tr><td colspan="3" class="note">every float identical to C</td></tr>';
+    }
+
+    /* ---- files -------------------------------------------------------- */
+
+    function status(msg, bad) {
+        var el = $('file-status');
+        el.textContent = msg || '';
+        el.className = 'note' + (bad ? ' bad' : '');
+    }
+
+    function doSave(forceAsk) {
+        state.files.save(forceAsk).then(function (msg) {
+            status(msg);
+            state.bench.markSaved();
+            /* The file is the record now; the draft would only resurrect an
+               older version on the next load. */
+            root.save.clearDraft(state.name);
+            $('file-name').textContent = state.files.fileName() || '';
+        }).catch(function (e) {
+            /* Dismissing the picker is a decision, not a failure. */
+            if (e && e.name === 'AbortError') { status(''); return; }
+            status('save failed: ' + (e && e.message ? e.message : e), true);
+        });
+    }
+
+    function doOpen() {
+        state.files.open().then(function (r) {
+            /* Reopening replaces the document but not the references: this
+               file may be nothing like whatever was last dumped. The doc
+               object itself is kept -- every panel holds it by reference. */
+            state.fromFile = true;
+            state.spectral = !!r.doc.spectral;
+            $('spectral').checked = state.spectral;
+            state.bench.replace(r.doc);
+            state.cam = root.camera.create(state.doc);
+            state.cam.setWorld(state.walkDoc);
+            $('file-name').textContent = r.name;
+            $('scene-name').textContent = r.name;
+            document.title = 'hologram — ' + r.name;
+            status('opened ' + r.name);
+            markDetached();
+            showBudget();
+            invalidate();
+        }).catch(function (e) {
+            if (e && e.name === 'AbortError') { status(''); return; }
+            status('open failed: ' + (e && e.message ? e.message : e), true);
+        });
+    }
+
+    function markDetached() {
+        var el = $('detached');
+        el.hidden = !isDetached();
+        if (!el.hidden) {
+            el.textContent = 'This document did not come from the dump ' +
+                'beside it. The packer and oracle checks refer to ' +
+                'build/' + state.name + '_*.bin, which is a render of ' +
+                'whatever was last dumped -- not of this.';
+        }
+    }
+
+    /* Every edit writes a draft, so a closed tab does not lose work that was
+       never saved to a file. Debounced: dragging a slider is one draft, not
+       two hundred writes to localStorage. */
+    var draftTimer = 0;
+    function scheduleDraft() {
+        if (draftTimer) { clearTimeout(draftTimer); }
+        draftTimer = setTimeout(function () {
+            draftTimer = 0;
+            if (state.bench && state.bench.isDirty()) {
+                root.save.saveDraft(state.name, state.doc);
+            }
+        }, 600);
     }
 
     /* ---- walking ------------------------------------------------------ */
@@ -342,6 +427,14 @@
                 state.bench.redo();
                 e.preventDefault();
             }
+            if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') {
+                e.preventDefault();
+                doSave(e.shiftKey);
+            }
+            if ((e.ctrlKey || e.metaKey) && e.code === 'KeyO') {
+                e.preventDefault();
+                doOpen();
+            }
         });
         window.addEventListener('keyup', function (e) {
             if (KEYS[e.code]) {
@@ -389,6 +482,23 @@
         });
         $('walk').addEventListener('change', function (e) {
             setWalking(e.target.checked);
+        });
+        $('save').addEventListener('click', function () { doSave(false); });
+        $('save-as').addEventListener('click', function () { doSave(true); });
+        $('open').addEventListener('click', doOpen);
+        $('discard-draft').addEventListener('click', function () {
+            root.save.clearDraft(state.name);
+            location.reload();
+        });
+
+        /* An unsaved document should not vanish without a word. The draft is
+           already written, so this is a courtesy, and browsers only honour
+           it when the page has been interacted with. */
+        window.addEventListener('beforeunload', function (e) {
+            if (state.bench && state.bench.isDirty()) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
         });
         $('fov').addEventListener('input', function (e) {
             state.cam.setFov(parseFloat(e.target.value));
@@ -508,12 +618,40 @@
                 camera: function () { return state.cam; },
                 changed: function () {
                     showBudget();
+                    markDetached();
+                    scheduleDraft();
                     invalidate();
                 },
                 selected: function () {
                     if (state.sweep) { state.sweep.render(); }
                 }
             });
+
+            state.files = root.files.create({
+                doc: function () { return state.doc; },
+                camera: function () { return state.cam; },
+                aspect: function () { return DESIGN_W / DESIGN_H; },
+                origin: function () { return state.name; },
+                suggestedName: function () { return state.name + '.scene.json'; }
+            });
+            if (!state.files.supported) {
+                status('this browser has no file picker, so Save writes to ' +
+                       'your downloads folder');
+            }
+
+            /* A draft from a previous visit. Restored rather than offered,
+               because losing work quietly is the failure worth avoiding --
+               and it is marked edited, so every check that depends on the
+               dump says so. `discard` puts the dumped scene back. */
+            var draft = root.save.readDraft(state.name);
+            if (draft && draft.doc) {
+                state.bench.replace(draft.doc);
+                state.bench.markDirty();
+                $('draft-row').hidden = false;
+                $('draft-when').textContent =
+                    new Date(draft.at).toLocaleString();
+            }
+            markDetached();
 
             state.sweep = root.sweeppanel.create({
                 host: 'sweep',

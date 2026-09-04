@@ -29,6 +29,18 @@ h2 {
 .hint { margin-left: auto; color: var(--dim); }
 
 #banner { font-weight: 700; margin: 10px 0 4px; }
+#file-status:empty, #file-name:empty { display: none; }
+#file-status { margin: 2px 0; }
+.warnline[hidden], .draftrow[hidden] { display: none; }
+.warnline {
+  color: var(--bad); background: var(--warnbg);
+  border-left: 3px solid var(--bad); padding: 6px 8px; margin: 6px 0;
+}
+.draftrow {
+  border-left: 3px solid var(--line); padding: 6px 8px; margin: 6px 0;
+  color: var(--dim);
+}
+.draftrow button { margin: 0 0 0 6px; }
 #banner.ok { color: var(--ok); }
 #banner.bad { color: var(--bad); }
 
