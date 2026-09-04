@@ -43,7 +43,10 @@ and editing a room that is not the room is the failure everything else here
 is arranged to prevent. The header shows which directory a scene came from
 whenever it is not the engine's own.
 
-Only the dumps move. The tracer is always this repository's
+Only the dumps move.  also stays this repository's: it is a
+measurement of the tracer and the machine that timed it, the same figure
+whichever room is open, and a game has no reason to have one. The tracer
+is always this repository's
 `shaders/trace.glsl`, deliberately: a game's `shaders/` is a copy its build
 script made, and what the editor should show is the one the oracle holds to
 the CPU reference.

@@ -655,7 +655,13 @@
                 .then(JSON.parse).catch(function () { return null; }),
             /* Optional and scene-independent: whatever tools/bench last
                measured on this machine, if it was asked to write it down. */
-            fetchText(DUMPS + '/bench.json')
+            /* The engine's, always, never the mounted directory's. Every
+               other file here belongs to a scene; this one belongs to the
+               tracer and the machine that timed it, and is the same figure
+               whichever room is open. A game has no reason to have one, and
+               losing the comparison column just because ?dir= points at a
+               game would be the mount reaching one file too far. */
+            fetchText(ROOT + '/build/bench.json')
                 .then(JSON.parse).catch(function () { return null; })
         ]).then(function (loaded) {
             var shaderSrc = loaded[0], json = loaded[1], golden = loaded[2];
