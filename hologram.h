@@ -24,5 +24,6 @@
 #include "source/polar.h"     /* Stokes rows and Mueller matrices               */
 #include "source/spectrum.h"  /* wavelengths, dispersion, CIE folding           */
 #include "source/timestep.h"  /* fixed-step accumulator (ported from magnolia)  */
+#include "source/walk_json.h" /* the walk world as data, and a trace of it      */
 
 #endif

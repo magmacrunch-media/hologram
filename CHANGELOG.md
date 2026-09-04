@@ -98,6 +98,36 @@ The sweep: a detector on the image, and one knob turned under it.
   against the unpolarized wall, where test_polar.c pins an eighth, and a
   crossed pair with nothing between them reads a true zero.
 
+Walking, and `source/walk_json.c`.
+
+- A HoloWalkWorld is not part of a HoloScene -- the walls are
+  hand-authored boxes that deliberately differ from the panels you can
+  see, because what stops a player and what reflects light are not the
+  same surface. So a dumped scene said nothing about where you can stand.
+  The three examples that own a walker now dump their world too.
+- The editor walks it with `G`: holo_walk_step through a twin, driven by
+  the fixed-step accumulator at the 120 Hz the examples set, eyes 1.55
+  above the feet. A flying camera will stand inside a wall and show a
+  sightline that does not exist; this one cannot.
+- That twin is the one nothing about the picture would catch drifting --
+  a room you can walk through the wall of still renders perfectly -- so
+  every dump carries a trace of 660 scripted steps recording what was
+  commanded and what came out, and the editor replays it. The script is
+  in the file rather than shared knowledge, so nothing has to be kept in
+  step but the arithmetic. All three worlds replay bit-identical, with
+  the bar at exactly zero rather than a tolerance.
+- Mutation-testing that check found it was not enough. Every wall in a
+  room starts at the floor, so the vertical span test never changes its
+  answer and `height` could be altered undetected; and a scripted walk
+  only meets the walls it happens to pass, so a wall could be deleted
+  undetected too. build/walk_selftest.json is a world built to be awkward
+  about exactly that -- a plain wall, a curb low enough to jump, and an
+  overhang clearing the floor by less than a walker's height -- and it
+  catches both.
+- holo_json_float is exported from scene_json.h so both writers spell a
+  float the same way. walk_json.h joins the umbrella header, since unlike
+  scene_json it is called from a game's own main.
+
 The game release: whatever Crystal Mirror Maze development asks of the
 engine lands here.
 

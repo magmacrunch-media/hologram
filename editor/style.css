@@ -108,6 +108,10 @@ tr.over td, tr.over td.note { color: var(--bad); font-weight: 700; }
 }
 
 .row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.row[hidden] { display: none; }
+.row.off { opacity: .7; }
+.note.ok { color: var(--ok); }
+.note.bad { color: var(--bad); }
 .row input[type="range"] { flex: 1; min-width: 0; }
 .num { font-variant-numeric: tabular-nums; }
 

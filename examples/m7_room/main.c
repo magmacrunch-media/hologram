@@ -97,6 +97,12 @@ static void after_frame(void) {
                                (float)sapp_width() / (float)sapp_height());
         HoloOracleStats st;
         if (dump_mode) {
+            /* The walls are not part of the scene, so anything
+               outside this process that wants to walk the room has
+               to be told them separately -- along with a trace to
+               hold its own walk step to ours. See walk_json.h. */
+            holo_walk_write_json("build/m7_room_walk.json", &world, &walker);
+            holo_walk_write_selftest_json("build/walk_selftest.json");
             exit(holo_oracle_dump(&scene, &cam, spectral_on, &gpu,
                                   sizeof gpu, "m7_room") ? 0 : 1);
         }

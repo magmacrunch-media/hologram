@@ -19,10 +19,17 @@
  * file a person wrote: 0.3 stays "0.3".
  */
 
+#include <stdio.h>
 #include "camera.h"
 #include "cpu_trace.h"
 
 #define HOLO_SCENE_JSON_FORMAT "hologram/scene/1"
+
+/* The shortest text that reads back bit-exact through strtof, written to f.
+   Exported because walk_json.c writes floats to the same standard, and there
+   is no reason for two answers to "how is a float spelled". A non-finite
+   value has no JSON literal at all and is written as 0. */
+void holo_json_float(FILE *f, float v);
 
 /* Write scene and camera to path as JSON. spectral records which path the
    frame was traced through, so a reader renders the same one. The camera is

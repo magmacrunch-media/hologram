@@ -114,6 +114,48 @@
             '<tr><td colspan="3" class="note">every float identical to C</td></tr>';
     }
 
+    /* ---- walking ------------------------------------------------------ */
+
+    function setWalking(on) {
+        var ok = state.cam.setWalking(on);
+        $('walk').checked = ok;
+        $('walk-row').classList.toggle('off', !ok);
+        invalidate();
+        return ok;
+    }
+
+    /* core/collision.js is a twin of holo_walk_step, and unlike the packer
+       nothing about the picture would show it drifting -- a room you can
+       walk through the wall of still renders correctly. So it is checked
+       against traces the engine dumped: the example's own world, and a
+       synthetic one built to be awkward about the cases a room does not
+       exercise. See source/walk_json.h. */
+    function showWalkConformance(walkDoc, selfDoc) {
+        var el = $('walk-check');
+        var parts = [];
+        var ok = true;
+
+        [[walkDoc, state.name], [selfDoc, 'selftest']].forEach(function (pair) {
+            if (!pair[0]) { return; }
+            var c = root.collision.conformance(pair[0]);
+            if (!c.ok) { ok = false; }
+            parts.push(pair[1] + ': ' + (c.ok
+                ? c.exact + '/' + c.steps + ' bit-identical'
+                : c.differing + '/' + c.steps + ' differ, worst ' +
+                  c.worst.d.toExponential(2) + ' at step ' + c.worst.step +
+                  (c.groundedMismatch ? ', ' + c.groundedMismatch +
+                   ' grounded' : '')));
+        });
+
+        if (!parts.length) {
+            el.textContent = 'no walk dump for this scene';
+            el.className = 'note';
+            return;
+        }
+        el.textContent = (ok ? 'WALK OK  ' : 'WALK FAIL  ') + parts.join('   ');
+        el.className = ok ? 'note ok' : 'note bad';
+    }
+
     /* ---- the budget panel -------------------------------------------- */
 
     function showBudget() {
@@ -157,8 +199,22 @@
     var pendingFrame = 0;
 
     function moving() {
-        return !!(state.held.w || state.held.a || state.held.s ||
-                  state.held.d || state.held.q || state.held.e);
+        if (state.held.w || state.held.a || state.held.s ||
+            state.held.d || state.held.q || state.held.e) {
+            return true;
+        }
+        if (!state.cam || !state.cam.isWalking() || !state.cam.walker()) {
+            return false;
+        }
+        /* Airborne: gravity is still moving you with nothing held.
+         *
+           And jump-held, which is not the same thing and is easy to miss:
+           standing still, a Space press schedules exactly one frame, and
+           that frame carries dt = 0 because the loop had gone idle. Zero
+           buys no fixed steps, so the impulse is never applied and the jump
+           silently does nothing. Staying awake while the key is down gives
+           the accumulator a real delta to work with. */
+        return !state.cam.walker().grounded || !!state.held.jump;
     }
 
     function invalidate() {
@@ -194,13 +250,19 @@
         var dt = state.lastFrame ? Math.min((now - state.lastFrame) / 1000, 0.1) : 0;
         state.lastFrame = now;
 
-        if (moving() && dt > 0) {
+        if (state.cam.isWalking()) {
+            /* The real elapsed time goes to the accumulator, which decides
+               how many fixed steps that buys -- the examples' arrangement,
+               so the editor and the game agree about where you end up. */
+            state.cam.walkFrame(dt, state.held);
+            if (dt > 0) { state.fps = state.fps * 0.9 + (1 / dt) * 0.1; }
+        } else if (moving() && dt > 0) {
             var speed = (state.held.shift ? 8 : 2.5) * dt;
             state.cam.move((state.held.d ? 1 : 0) - (state.held.a ? 1 : 0),
                            (state.held.e ? 1 : 0) - (state.held.q ? 1 : 0),
                            (state.held.w ? 1 : 0) - (state.held.s ? 1 : 0),
                            speed);
-            state.fps = dt > 0 ? state.fps * 0.9 + (1 / dt) * 0.1 : state.fps;
+            state.fps = state.fps * 0.9 + (1 / dt) * 0.1;
         }
 
         var basis = state.cam.basis(DESIGN_W / DESIGN_H);
@@ -208,9 +270,13 @@
         state.view.draw(state.params, now / 1000);
 
         var s = state.cam.state();
+        var w = state.cam.isWalking() ? state.cam.walker() : null;
         $('readout').textContent =
-            'pos ' + s.pos.x.toFixed(2) + ' ' + s.pos.y.toFixed(2) + ' ' +
-            s.pos.z.toFixed(2) +
+            (w ? 'walking  feet ' + w.pos.x.toFixed(2) + ' ' +
+                 w.pos.y.toFixed(2) + ' ' + w.pos.z.toFixed(2) +
+                 (w.grounded ? '' : '  airborne')
+               : 'flying   pos ' + s.pos.x.toFixed(2) + ' ' +
+                 s.pos.y.toFixed(2) + ' ' + s.pos.z.toFixed(2)) +
             '   yaw ' + (s.yaw * 180 / Math.PI).toFixed(0) + '°' +
             '   pitch ' + (s.pitch * 180 / Math.PI).toFixed(0) + '°' +
             '   fov ' + s.fovDeg.toFixed(0) + '°' +
@@ -245,6 +311,14 @@
             if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
                 state.held.shift = true;
             }
+            if (e.code === 'Space') {
+                state.held.jump = true;
+                e.preventDefault();
+                invalidate();
+            }
+            if (e.code === 'KeyG' && state.cam.canWalk()) {
+                setWalking(!state.cam.isWalking());
+            }
             if (e.code === 'KeyR') {
                 state.cam.reset();
                 invalidate();
@@ -276,6 +350,7 @@
             if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
                 state.held.shift = false;
             }
+            if (e.code === 'Space') { state.held.jump = false; }
         });
         /* A window that loses focus mid-stride would otherwise keep walking;
            regaining it schedules a frame, so the view is never left stale. */
@@ -311,6 +386,9 @@
         $('spectral').addEventListener('change', function (e) {
             state.spectral = e.target.checked;
             invalidate();
+        });
+        $('walk').addEventListener('change', function (e) {
+            setWalking(e.target.checked);
         });
         $('fov').addEventListener('input', function (e) {
             state.cam.setFov(parseFloat(e.target.value));
@@ -372,7 +450,13 @@
             fetchBuffer(ROOT + '/build/' + state.name + '_params.bin')
                 .catch(function () { return null; }),
             fetchBuffer(ROOT + '/build/' + state.name + '_ref.bin')
-                .catch(function () { return null; })
+                .catch(function () { return null; }),
+            /* Both optional: only the three examples with a walker dump a
+               world, and the selftest arrives with them. */
+            fetchText(ROOT + '/build/' + state.name + '_walk.json')
+                .then(JSON.parse).catch(function () { return null; }),
+            fetchText(ROOT + '/build/walk_selftest.json')
+                .then(JSON.parse).catch(function () { return null; })
         ]).then(function (loaded) {
             var shaderSrc = loaded[0], json = loaded[1], golden = loaded[2];
 
@@ -391,6 +475,10 @@
             $('spectral').checked = state.spectral;
 
             state.cam = root.camera.create(state.doc);
+            state.cam.setWorld(loaded[4]);
+            $('walk-row').hidden = !state.cam.canWalk();
+            $('walk-row').classList.add('off');
+            showWalkConformance(loaded[4], loaded[5]);
             /* Wired only once the camera exists: every handler reaches for
                it, and a keypress during the fetch would otherwise land on
                null. */

@@ -79,6 +79,11 @@
         <input type="checkbox" id="spectral">
         <span>spectral <span class="key">P</span></span>
       </label>
+      <label class="row" id="walk-row" hidden>
+        <input type="checkbox" id="walk">
+        <span>walk <span class="key">G</span></span>
+      </label>
+      <p id="walk-check" class="note"></p>
       <label class="row">
         <span>fov</span>
         <input type="range" id="fov" min="20" max="120" step="1" value="70">
@@ -95,6 +100,8 @@
         · <span class="key">shift</span> faster
         · <span class="key">R</span> back to the scene's camera
         · <span class="key">F</span> look at the selection
+        · <span class="key">G</span> walk / fly
+        · <span class="key">space</span> jump
       </p>
     </section>
 
@@ -124,6 +131,8 @@
 <script src="core/emit.js"></script>
 <script src="core/oracle.js"></script>
 <script src="core/sweep.js"></script>
+<script src="core/timestep.js"></script>
+<script src="core/collision.js"></script>
 <script src="ui/view.js"></script>
 <script src="ui/camera.js"></script>
 <script src="ui/inspector.js"></script>

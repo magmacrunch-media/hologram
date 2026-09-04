@@ -13,7 +13,7 @@
    A non-finite float has no JSON spelling at all -- there is no literal for
    NaN -- so it is written as 0. A scene carrying one is already broken; the
    file should still parse so the editor can show what it holds. */
-static void wf(FILE *f, float v) {
+void holo_json_float(FILE *f, float v) {
     char buf[64];
     int p;
     if (!isfinite((double)v)) {
@@ -31,6 +31,8 @@ static void wf(FILE *f, float v) {
     }
     fputs(buf, f);
 }
+
+static void wf(FILE *f, float v) { holo_json_float(f, v); }
 
 static void wv3(FILE *f, HoloV3 v) {
     fputc('[', f);

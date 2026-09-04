@@ -105,6 +105,69 @@ round trip: 840 of 840 floats identical
 EMITTER OK: byte-identical
 ```
 
+## Walking
+
+`G` swaps the flying camera for a walking one, on the three examples that
+have a walker. It is `holo_walk_step`, driven by the fixed-step accumulator
+at the 120 Hz every walking example sets, with the eyes 1.55 above the feet
+— so the room answers the question a flying camera cannot: not what a panel
+looks like from over there, but whether a player can get there and what they
+see when they do. A flying camera will happily stand inside a wall and show
+you a sightline that does not exist.
+
+`WASD` walks, `space` jumps, `G` goes back to flying.
+
+The walls are **not** in the scene. `HoloWalkWorld` is a separate struct,
+hand-authored boxes that deliberately differ from the panels you can see —
+thicker, set back — because what stops a player and what reflects light are
+not the same surface. So the walking examples now dump
+`build/<name>_walk.json` beside the scene.
+
+### This twin is checked harder than the others
+
+`core/collision.js` is a copy of `collision.c`, and it is the one twin here
+that no rendered image would catch drifting: a packer bug shows up as a
+wrong picture, but a room you can walk through the wall of still renders
+perfectly. So it is not checked by eye at all.
+
+Every walk dump carries a **trace**: 660 scripted steps, recording what was
+commanded and what came out. The editor replays the commands through its own
+walk step and compares. The script is in the file, not shared knowledge, so
+there is nothing to keep in sync but the arithmetic itself.
+
+```
+WALK OK  m7_room: 660/660 bit-identical   selftest: 570/570 bit-identical
+```
+
+Bit-identical, not within-a-tolerance — the bar is exactly zero. (Getting
+there required one fix worth knowing about: `walk_json.c` writes the
+shortest text that reads back as the same **float**, and `JSON.parse` returns
+a **double**. Comparing a `Math.fround`ed result against the raw parse
+disagrees in the last places on almost every row. Every number out of the
+JSON goes back through `fround` before it is used.)
+
+A room turns out not to exercise everything, though, and the gap is worth
+naming. Every wall in one starts at the floor, so the vertical span test
+never changes its answer; and a scripted walk only meets the walls it happens
+to pass. Mutation-testing the check found both: changing `height` from 1.7 to
+1.6 was not caught, and neither was deleting a wall the script never reaches.
+
+So there is a second world in `build/walk_selftest.json`, built in
+`walk_json.c` rather than dumped from a game, whose only purpose is to be
+awkward — a plain wall, a curb low enough to jump over, and an overhang whose
+underside clears the floor by less than a walker's height. Against that
+world every mutation is caught:
+
+| mutation | caught |
+|---|---|
+| `height` 1.7 → 1.6 | yes — walks under the overhang |
+| curb raised out of jump range | yes |
+| overhang lifted clear | yes |
+| any wall deleted | yes |
+| `radius` 0.3 → 0.301 | yes |
+| `gravity` 20 → 20.01 | yes |
+| `height` 1.7 → 1.8 | no, and correctly — a taller walker changes no outcome in that world |
+
 ## The sweep
 
 Put a detector on the image, turn one knob, plot what comes out.
@@ -300,6 +363,8 @@ core/     pure: no DOM, no WebGL
   emit.js       scene -> HoloScene C
   oracle.js     holo_oracle_diff's arithmetic
   sweep.js      the probe, and what a sweep measures
+  collision.js  holo_walk_step, and the trace that checks it
+  timestep.js   the fixed-step accumulator
 ui/
   view.js       WebGL2: compile, upload, draw, read back
   camera.js     free flight
@@ -347,7 +412,11 @@ second. Correct behaviour — a page nobody is looking at should not hold the
 GPU — but it means a sweep wants the window in front of you. Forty-eight
 steps takes a second or two when it is.
 
-**No walking.** Flying has no capsule, no floor and no walls. Walking the
-scene the way the game will needs `collision.c` and `timestep.c` ported as
-twins, and a twin nothing checks is the thing this page is otherwise careful
-to avoid — so it waits until it is worth the check.
+**No walking a scene you edited.** The walls come from the dump, and moving
+a panel in the editor does not move the box that stops you — they were never
+the same surface. Editing the walk world would mean the editor authoring
+`HoloWalkWorld`, which is a real feature and not this one.
+
+**No walking at all outside the three examples that have a walker.** m2
+through m6 have no `HoloWalkWorld` to dump, so `G` does nothing there and the
+control is hidden.

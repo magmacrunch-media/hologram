@@ -324,6 +324,14 @@ server. See `editor/README.md` for what that panel does and does not
 claim, and for a difference between oracle.c's mean and gldiff's that the
 table below inherits.
 
+On the examples that have a walker it also walks: holo_walk_step at the
+same 120 Hz, with the eyes where a player's are, so the room can answer
+whether a sightline is one a player can actually stand in. The walls come
+from a new `build/<name>_walk.json`, since HoloWalkWorld is not part of a
+HoloScene, and that dump carries a trace of its own walk which the editor
+replays to hold its copy of the step to this one -- bit-identical, on a
+world built to be awkward as well as on the game's.
+
 And it measures. Put the probe rectangle on the image, sweep one field of
 one primitive, and read the curve off the render: a polarizer's angle
 gives Malus and an extinction ratio, a dish's vertex radius gives the
