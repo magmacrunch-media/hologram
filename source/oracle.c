@@ -6,6 +6,7 @@
 #include "../external/sokol/sokol_app.h"
 #include "display.h"
 #include "oracle.h"
+#include "scene_json.h"
 
 /* On a failed diff, both frames land in build\ as PPMs: when the verdict
    is "the twins disagree", the first question is always "where". */
@@ -157,7 +158,19 @@ int holo_oracle_dump(const HoloScene *scene, const HoloCamera *cam,
         return 0;
     }
 
+    /* The same scene as data. params.bin is the packed block a shader
+       consumes -- correct, and unreadable to anyone who is not the
+       shader. This is what the editor opens. It is a convenience, not
+       part of the diff, so failing to write it does not fail the dump. */
+    snprintf(path, sizeof path, "build/%s_scene.json", name);
+    int json_ok = holo_scene_write_json(path, scene, cam, spectral);
+
     printf("dumped build/%s_params.bin (%d bytes) and build/%s_ref.bin (%dx%d)\n",
            name, gpu_scene_size, name, w, h);
+    if (json_ok) {
+        printf("dumped build/%s_scene.json\n", name);
+    } else {
+        printf("warning: could not write build/%s_scene.json\n", name);
+    }
     return 1;
 }
