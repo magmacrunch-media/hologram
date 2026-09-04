@@ -127,6 +127,23 @@
             '<tr><td colspan="3" class="note">every float identical to C</td></tr>';
     }
 
+    /* ---- the walk world ----------------------------------------------- */
+
+    /* Once the walls have been moved the dumped trace no longer describes
+       this world, and the line reporting it should stop implying otherwise.
+       The selftest is untouched -- its world is synthetic and no edit can
+       reach it -- so the twin remains under check, and the wording says
+       which of the two is still speaking. */
+    function markWorldEdited() {
+        if (!state.walkPristine || !state.walkDoc) { return; }
+        var changed = JSON.stringify(state.walkDoc.world) !==
+                      JSON.stringify(state.walkPristine.world);
+        if (changed !== state.worldEdited) {
+            state.worldEdited = changed;
+            renderWalkCheck();
+        }
+    }
+
     /* ---- files -------------------------------------------------------- */
 
     function status(msg, bad) {
@@ -214,31 +231,54 @@
        walk through the wall of still renders correctly. So it is checked
        against traces the engine dumped: the example's own world, and a
        synthetic one built to be awkward about the cases a room does not
-       exercise. See source/walk_json.h. */
+       exercise. See source/walk_json.h.
+     *
+       Both are replayed against the world AS DUMPED. A trace is a record of
+       the C stepping a particular world, so editing the walls would make the
+       replay diverge and report a broken twin when nothing about the
+       arithmetic had changed. The selftest is the reason editing stays safe:
+       its world is synthetic and no edit can reach it, so the twin goes on
+       being checked however much the room is rearranged. */
     function showWalkConformance(walkDoc, selfDoc) {
-        var el = $('walk-check');
-        var parts = [];
-        var ok = true;
+        state.walkParts = [];
+        state.walkOk = true;
 
         [[walkDoc, state.name], [selfDoc, 'selftest']].forEach(function (pair) {
             if (!pair[0]) { return; }
             var c = root.collision.conformance(pair[0]);
-            if (!c.ok) { ok = false; }
-            parts.push(pair[1] + ': ' + (c.ok
-                ? c.exact + '/' + c.steps + ' bit-identical'
-                : c.differing + '/' + c.steps + ' differ, worst ' +
-                  c.worst.d.toExponential(2) + ' at step ' + c.worst.step +
-                  (c.groundedMismatch ? ', ' + c.groundedMismatch +
-                   ' grounded' : '')));
+            if (!c.ok) { state.walkOk = false; }
+            state.walkParts.push({
+                name: pair[1],
+                fromDump: pair[1] !== 'selftest',
+                text: c.ok
+                    ? c.exact + '/' + c.steps + ' bit-identical'
+                    : c.differing + '/' + c.steps + ' differ, worst ' +
+                      c.worst.d.toExponential(2) + ' at step ' + c.worst.step +
+                      (c.groundedMismatch ? ', ' + c.groundedMismatch +
+                       ' grounded' : '')
+            });
         });
+        renderWalkCheck();
+    }
 
-        if (!parts.length) {
+    function renderWalkCheck() {
+        var el = $('walk-check');
+        if (!state.walkParts || !state.walkParts.length) {
             el.textContent = 'no walk dump for this scene';
             el.className = 'note';
             return;
         }
-        el.textContent = (ok ? 'WALK OK  ' : 'WALK FAIL  ') + parts.join('   ');
-        el.className = ok ? 'note ok' : 'note bad';
+        var parts = state.walkParts.map(function (p) {
+            /* An edited world's trace was recorded from a different room, so
+               its verdict is withdrawn rather than restated. */
+            if (p.fromDump && state.worldEdited) {
+                return p.name + ': world edited, trace withdrawn';
+            }
+            return p.name + ': ' + p.text;
+        });
+        el.textContent = (state.walkOk ? 'WALK OK  ' : 'WALK FAIL  ') +
+                         parts.join('   ');
+        el.className = state.walkOk ? 'note ok' : 'note bad';
     }
 
     /* ---- the budget panel -------------------------------------------- */
@@ -490,6 +530,24 @@
             root.save.clearDraft(state.name);
             location.reload();
         });
+        $('plan-fit').addEventListener('click', function () {
+            state.plan.fit();
+        });
+        $('save-walls').addEventListener('click', function () {
+            if (!state.walkDoc) { return; }
+            var body = root.save.walkToJson(state.walkDoc.world,
+                                            state.walkDoc.start, state.name);
+            /* A separate file, because the engine keeps them separate:
+               scene_json.c and walk_json.c write different documents and a
+               game declares the two structs apart. */
+            root.files.writeOut(state.name + '.walk.json', body)
+                .then(function (msg) { status(msg); })
+                .catch(function (e) {
+                    if (e && e.name === 'AbortError') { status(''); return; }
+                    status('save failed: ' + (e && e.message ? e.message : e),
+                           true);
+                });
+        });
 
         /* An unsaved document should not vanish without a word. The draft is
            already written, so this is a courtesy, and browsers only honour
@@ -584,11 +642,19 @@
             state.spectral = !!state.doc.spectral;
             $('spectral').checked = state.spectral;
 
+            /* Two copies, for the same reason the scene has two: the trace
+               belongs to the world it was recorded from, and the walls are
+               about to become editable. state.walkDoc is what you edit and
+               walk in; the conformance check keeps its own. */
+            state.walkPristine = loaded[4];
+            state.walkDoc = loaded[4]
+                ? JSON.parse(JSON.stringify(loaded[4])) : null;
+
             state.cam = root.camera.create(state.doc);
-            state.cam.setWorld(loaded[4]);
+            state.cam.setWorld(state.walkDoc);
             $('walk-row').hidden = !state.cam.canWalk();
             $('walk-row').classList.add('off');
-            showWalkConformance(loaded[4], loaded[5]);
+            showWalkConformance(state.walkPristine, loaded[5]);
             /* Wired only once the camera exists: every handler reaches for
                it, and a keypress during the fetch would otherwise land on
                null. */
@@ -624,8 +690,44 @@
                 },
                 selected: function () {
                     if (state.sweep) { state.sweep.render(); }
+                },
+                /* The walk world rides the same undo stack; see bench.js. */
+                extra: {
+                    get: function () {
+                        return state.walkDoc ? state.walkDoc.world : null;
+                    },
+                    set: function (w) {
+                        if (state.walkDoc && w) {
+                            state.walkDoc.world = w;
+                            state.cam.setWorld(state.walkDoc);
+                        }
+                    }
+                },
+                restored: function () {
+                    if (state.plan) { state.plan.refresh(false); }
+                    markWorldEdited();
                 }
             });
+
+            state.plan = root.planview.create({
+                canvas: 'plan', list: 'plan-list', body: 'plan-body',
+                doc: function () { return state.doc; },
+                walkDoc: function () { return state.walkDoc; },
+                camera: function () { return state.cam; },
+                beginEdit: function () { state.bench.beginWorldStroke(); },
+                commit: function () { state.bench.commitWorldStroke(); },
+                changed: function () {
+                    /* Walls change nothing the tracer draws -- they are not
+                       optical -- so the view is not repainted here. What
+                       changes is where you can stand, which is why the world
+                       is handed straight back to the walker. */
+                    state.cam.setWorld(state.walkDoc);
+                    markWorldEdited();
+                    scheduleDraft();
+                }
+            });
+            $('plan-section').hidden = !state.walkDoc;
+            state.plan.refresh(true);
 
             state.files = root.files.create({
                 doc: function () { return state.doc; },

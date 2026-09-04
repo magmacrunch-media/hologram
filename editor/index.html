@@ -64,6 +64,17 @@
   </div>
 
   <aside class="bench">
+    <section id="plan-section">
+      <h2>plan <span id="plan-hint" class="hint2">drag to move · corners resize · wheel zooms</span></h2>
+      <canvas id="plan" class="plan"></canvas>
+      <div id="plan-list" class="list"></div>
+      <div id="plan-body"></div>
+      <div class="srow">
+        <button id="plan-fit">fit</button>
+        <button id="save-walls">save walls</button>
+      </div>
+    </section>
+
     <section>
       <h2>scene</h2>
       <div id="list" class="list"></div>
@@ -150,5 +161,6 @@
 <script src="ui/bench.js"></script>
 <script src="ui/oraclepanel.js"></script>
 <script src="ui/sweeppanel.js"></script>
+<script src="ui/planview.js"></script>
 <script src="ui/files.js"></script>
 <script src="ui/main.js"></script>

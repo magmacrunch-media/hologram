@@ -151,6 +151,40 @@ Saving, without a desktop wrapper after all.
   there -- printf pads an exponent to two digits where JavaScript does
   not, and prints negative zero with its sign where String(-0) is "0".
 
+The plan view, and authoring the walk world.
+
+- The tracer cannot draw a collision box -- they are not optical, so in
+  the first-person view a wall is invisible and the only evidence of one
+  is being stopped. That is how crystal-mirror-maze's walls are authored
+  today: written as C, compiled, walked into.
+- editor/ui/planview.js draws the room from above, where an axis-aligned
+  box loses only its height and the labels carry that. Drag to move, drag
+  a corner to resize, wheel to zoom; add and delete against HOLO_MAX_WALLS.
+- The scene's panels and spheres are drawn faintly underneath, which is
+  the point of the view and not decoration: a collision world deliberately
+  does not match the geometry you can see -- m7_room's mirrors are at
+  x = +-4 while the walls that stop you are 0.3-thick slabs behind them --
+  so the mistakes worth catching are a wall drifted from the mirror it
+  backs, a doorway quietly closed, a pane you can walk through. Nothing is
+  derived from a panel; that would make them one surface.
+- The walker's radius is drawn around your position, so a gap can be
+  judged before you try to walk through it.
+- emit.js gains worldToC, and it is checked the way the scene emitter is:
+  editor/worldtrip.c compiles a literal copied out of the panel, hands it
+  to holo_walk_write_json, and the resulting world object is identical to
+  the dump's. `save walls` writes hologram/walk/1 without a trace, since a
+  trace is a record of the C stepping a world and the editor cannot
+  honestly produce one.
+- Editing walls withdraws the trace's verdict rather than breaking it. A
+  dumped trace describes the world it was recorded from, so the world is
+  kept twice -- the one you edit and walk in, and the pristine one the
+  check replays -- and the line reads "world edited, trace withdrawn"
+  once they differ. The twin stays checked throughout, because the
+  synthetic selftest world is one no edit can reach.
+- Walls ride the scene's undo stack, so Ctrl+Z means the last thing you
+  did whichever panel you did it in, and a wall drag collapses to one
+  entry the way a slider drag does.
+
 The game release: whatever Crystal Mirror Maze development asks of the
 engine lands here.
 

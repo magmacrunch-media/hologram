@@ -147,6 +147,44 @@
         return out;
     }
 
+    /* The walk world, in walk_json.c's format.
+     *
+       Written WITHOUT a trace, and that omission is the honest part. A trace
+       is a record of the C stepping this world; the editor cannot produce
+       one, and inventing rows from its own copy of the walk step would be a
+       twin marking its own homework. A reader gets the world and is told
+       plainly there is nothing here to check the arithmetic against -- the
+       synthetic selftest in build/walk_selftest.json still does that, and it
+       does not depend on any particular world. */
+    function walkToJson(world, start, origin) {
+        var out = '';
+        out += '{\n';
+        out += line('  ', 'format', '"hologram/walk/1"', ',\n');
+        out += '  "editor": {\n';
+        out += line('    ', 'edited', '1', ',\n');
+        out += line('    ', 'origin', JSON.stringify(origin || null), ',\n');
+        out += line('    ', 'note',
+                    '"no trace: written by the editor, not by a walk"', '\n');
+        out += '  },\n';
+        out += '  "world": {\n';
+        out += line('    ', 'radius', num(world.radius || 0), ',\n');
+        out += line('    ', 'height', num(world.height || 0), ',\n');
+        out += line('    ', 'gravity', num(world.gravity || 0), ',\n');
+        out += line('    ', 'floor_y', num(world.floor_y || 0), ',\n');
+        out += line('    ', 'max_walls', String(root.schema.MAX_WALLS), ',\n');
+        out += '    "walls": [\n';
+        (world.walls || []).forEach(function (b, i, all) {
+            out += '      { "min": ' + v3(b.min) + ', "max": ' + v3(b.max) +
+                   ' }' + (i + 1 < all.length ? ',\n' : '\n');
+        });
+        out += '    ]\n  },\n';
+        var s = start || { pos: [0, 0, 0], vel: [0, 0, 0], grounded: 1 };
+        out += '  "start": { "pos": ' + v3(s.pos) + ', "vel": ' + v3(s.vel) +
+               ', "grounded": ' + (s.grounded ? 1 : 0) + ' }\n';
+        out += '}\n';
+        return out;
+    }
+
     /* Where the camera is now, in the shape the format wants. A save records
        where you were standing, which is most of why you would reopen it. */
     function cameraFrom(cam, aspect) {
@@ -196,7 +234,7 @@
     }
 
     root.save = {
-        toJson: toJson, cameraFrom: cameraFrom,
+        toJson: toJson, walkToJson: walkToJson, cameraFrom: cameraFrom,
         saveDraft: saveDraft, readDraft: readDraft, clearDraft: clearDraft,
         draftKey: draftKey
     };

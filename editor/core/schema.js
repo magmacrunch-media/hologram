@@ -175,6 +175,54 @@
                 'of the dish shows you the sun.' }
     ];
 
+    /* A wall is an axis-aligned box, and the only thing in the editor that
+       is not optical: HoloWalkWorld is what stops a player, and the panels
+       are what reflect light. They are deliberately different surfaces --
+       m7_room's mirrors sit at x = +-4 while the walls that stop you are
+       0.3-thick slabs behind them -- so nothing here is derived from the
+       scene, and moving a panel does not move a wall. */
+    var WALL = [
+        { key: 'min', kind: 'vec3', unit: 'm',
+          help: 'The low corner. The box is expanded by the walker radius ' +
+                'at collision time, so this is the surface, not the stand-off.' },
+        { key: 'max', kind: 'vec3', unit: 'm',
+          help: 'The high corner. Its y is what decides whether you can jump ' +
+                'onto or over this; min.y decides whether you can walk under.' }
+    ];
+
+    var WALK_WORLD = [
+        { key: 'radius', kind: 'float', min: 0.05, max: 2, step: 0.01, unit: 'm',
+          help: 'Horizontal capsule radius. Every wall is expanded by this, ' +
+                'so the walker is a point against rounded rooms.' },
+        { key: 'height', kind: 'float', min: 0.2, max: 4, step: 0.01, unit: 'm',
+          help: 'Feet to crown. Eyes sit somewhat below -- the examples put ' +
+                'them at 1.55 for a height of 1.7.' },
+        { key: 'gravity', kind: 'float', min: 0, max: 60, step: 0.5,
+          help: 'Positive; pulls -y.' },
+        { key: 'floor_y', kind: 'float', min: -20, max: 20, step: 0.05,
+          unit: 'm', help: 'The plane the walker lands on.' }
+    ];
+
+    /* A wall's footprint and what its height makes it. The height is the
+       part a plan view cannot show, so it is what the label says. */
+    function describeWall(b, world) {
+        var w = (b.max[0] - b.min[0]), d = (b.max[2] - b.min[2]);
+        var lo = b.min[1], hi = b.max[1];
+        var size = (+w.toFixed(2)) + ' x ' + (+d.toFixed(2));
+        var eye = world ? world.height : 1.7;
+        var kind;
+        if (lo > 0.01) {
+            kind = lo >= eye ? 'overhead, clear' : 'overhang at ' + (+lo.toFixed(2));
+        } else if (hi < 0.5) {
+            kind = 'curb ' + (+hi.toFixed(2)) + ' high';
+        } else if (hi < eye) {
+            kind = 'low wall ' + (+hi.toFixed(2));
+        } else {
+            kind = 'wall';
+        }
+        return size + '  ' + kind;
+    }
+
     /* What a newly added primitive is. Deliberately visible and neutral --
        a matte white thing in front of the camera, not something invisible
        that has to be hunted for. */
@@ -227,8 +275,13 @@
     root.schema = {
         SPHERE: SPHERE, RECT: RECT, DISH: DISH,
         FLOOR: FLOOR, SKY: SKY,
+        WALL: WALL, WALK_WORLD: WALK_WORLD, MAX_WALLS: 24,
         LISTS: LISTS, DEFAULTS: DEFAULTS,
         FILTER_OPTIONS: FILTER_OPTIONS,
-        describe: describe
+        describe: describe, describeWall: describeWall,
+        newWall: function (at) {
+            var x = at ? at.x : 0, z = at ? at.z : 0;
+            return { min: [x - 1, 0, z - 0.15], max: [x + 1, 3, z + 0.15] };
+        }
     };
 }(window.Hologram = window.Hologram || {}));

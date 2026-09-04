@@ -113,10 +113,29 @@
             });
         }
 
+        /* Write a one-off document that is not the scene: the walk world,
+           which the engine keeps in its own file and which therefore does
+           not share the scene's handle. Always asks where. */
+        function writeOut(name, body) {
+            if (!SUPPORTED) {
+                download(name, body);
+                return Promise.resolve('downloaded ' + name +
+                    ' (no file picker in this browser)');
+            }
+            return window.showSaveFilePicker(Object.assign({
+                suggestedName: name
+            }, PICKER)).then(function (h) {
+                return writeTo(h, body).then(function () {
+                    return 'saved ' + h.name;
+                });
+            });
+        }
+
         return {
             supported: SUPPORTED,
             save: save,
             open: open,
+            writeOut: writeOut,
             fileName: function () { return handleName; },
             hasHandle: function () { return handle !== null; }
         };

@@ -331,6 +331,13 @@ one, byte for byte, so the editor opens its own output the way it opens a
 dump. No desktop wrapper: a page can write a file the person chose, and
 keep the handle.
 
+The walls themselves are editable, from a plan view: the tracer cannot
+draw a collision box, so a room's walls have until now been written as C
+and found by walking into them. Seen from above, with the panels drawn
+faintly underneath, a wall that has drifted from the mirror it backs is
+visible at a glance -- and they are meant to differ, which is exactly why
+nothing derives one from the other.
+
 On the examples that have a walker it also walks: holo_walk_step at the
 same 120 Hz, with the eyes where a player's are, so the room can answer
 whether a sightline is one a player can actually stand in. The walls come

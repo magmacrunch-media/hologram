@@ -50,15 +50,29 @@
         /* Snapshot undo over the whole document. A scene is a few kilobytes
            of JSON -- the artstore problem magma-kit solved for megabyte
            sprite sheets does not arise here, so the simple thing is right. */
+        /* One stack for everything, because Ctrl+Z means "undo the last
+           thing I did" and a person moving between the scene list and the
+           plan does not think of them as two documents. `extra` is the walk
+           world, which lives in a different file and so cannot simply be a
+           key of `doc`. */
         var history = window.MagmaKit.history.create({
             cap: 200,
-            snapshot: function () { return JSON.stringify(doc); },
+            snapshot: function () {
+                return JSON.stringify({
+                    doc: doc,
+                    extra: opts.extra ? opts.extra.get() : null
+                });
+            },
             restore: function (s) {
                 var next = JSON.parse(s);
                 Object.keys(doc).forEach(function (k) { delete doc[k]; });
-                Object.keys(next).forEach(function (k) { doc[k] = next[k]; });
+                Object.keys(next.doc).forEach(function (k) {
+                    doc[k] = next.doc[k];
+                });
+                if (opts.extra && next.extra) { opts.extra.set(next.extra); }
                 clampSelection();
                 renderAll();
+                if (opts.restored) { opts.restored(); }
                 opts.changed();
             }
         });
@@ -239,7 +253,9 @@
         function renderEmit() {
             var box = $(ids.emit);
             if (!box || box.hidden) { return; }
+            var world = opts.extra ? opts.extra.get() : null;
             box.value = root.emit.toC(doc, 'scene') + '\n' +
+                        (world ? root.emit.worldToC(world, 'world') + '\n' : '') +
                         root.emit.cameraToC(opts.camera());
         }
 
@@ -304,6 +320,13 @@
             renderEmit: renderEmit,
             frameSelected: frameSelected,
             selection: function () { return sel; },
+            /* The plan view drives the same stack, so a wall drag collapses
+               to one undo the way a slider drag does. */
+            beginWorldStroke: function () { history.beginStroke(); },
+            commitWorldStroke: function () {
+                history.commitStroke();
+                syncDirty();
+            },
             undo: function () {
                 history.cancelStroke();
                 if (history.undo()) { syncDirty(); }

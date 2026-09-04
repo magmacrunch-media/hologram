@@ -245,5 +245,35 @@
             ', ' + (aspect ? fl(aspect) : 'aspect') + ');\n';
     }
 
-    root.emit = { toC: toC, cameraToC: cameraToC, fl: fl, num: num };
+    /* The walk world as the C that built it. A separate block from the
+       scene because it is a separate struct: what stops a player and what
+       reflects light are not the same surface, and the examples declare them
+       apart for that reason. */
+    function worldToC(world, name) {
+        name = name || 'world';
+        var walls = world.walls || [];
+        var out = [];
+        out.push(name + ' = (HoloWalkWorld){');
+        out.push('    .radius = ' + fl(world.radius) + ',');
+        out.push('    .height = ' + fl(world.height) + ',');
+        out.push('    .gravity = ' + fl(world.gravity) + ',');
+        if (world.floor_y) {
+            out.push('    .floor_y = ' + fl(world.floor_y) + ',');
+        }
+        if (walls.length) {
+            out.push('    .walls = {');
+            walls.forEach(function (b) {
+                out.push('        { .min = ' + v3(b.min) +
+                         ', .max = ' + v3(b.max) + ' },');
+            });
+            out.push('    },');
+            out.push('    .wall_count = ' + walls.length + ',');
+        }
+        out.push('};');
+        return out.join('\n') + '\n';
+    }
+
+    root.emit = {
+        toC: toC, cameraToC: cameraToC, worldToC: worldToC, fl: fl, num: num
+    };
 }(window.Hologram = window.Hologram || {}));

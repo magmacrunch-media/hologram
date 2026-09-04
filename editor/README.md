@@ -158,6 +158,57 @@ value and do change the text — `printf` pads an exponent to two digits
 sign, where `String(-0)` is `"0"`. Matching both is what lets a saved scene
 be diffed against the dump it came from and show only the edits.
 
+## The plan, and authoring walls
+
+The tracer cannot draw a collision box. They are not optical — it has no
+boxes and they reflect nothing — so in the first-person view a wall is
+invisible and the only evidence of one is being stopped by it. That is a
+poor way to author a room, and it is how crystal-mirror-maze's walls are
+authored today: written as C, compiled, walked into.
+
+The **plan** panel draws the room from above. Walls are axis-aligned boxes,
+so a top-down projection loses only their height — which is exactly what the
+row labels and the inspector carry. Drag a wall to move it, drag a corner of
+the selected one to resize, wheel to zoom, drag the background to pan. `+`
+adds one, `×` deletes, and `fit` frames everything.
+
+Drawn faintly underneath are the scene's own panels and spheres, and that is
+the point of the view rather than decoration. A collision world deliberately
+does **not** match the geometry you can see — m7_room's mirrors sit at
+x = ±4 while the walls that stop you are 0.3-thick slabs behind them — so
+the mistakes worth catching are a wall that has drifted from the mirror it
+backs, a doorway that quietly closed, a pane you can walk through. Nothing
+here derives a wall from a panel; doing so would make them the same surface,
+which the engine deliberately does not.
+
+The walker's radius is drawn as a circle around your position, so a gap can
+be judged by eye before you try to walk through it.
+
+Height is the part a plan cannot show, so the list says it instead: a row
+reads `2 x 0.1 wall`, or `curb 0.4 high`, or `overhang at 1.65`, and
+anything you cannot simply walk into is drawn dashed and paler.
+
+`show C` emits the world as a `HoloWalkWorld` block beside the scene, which
+is how it gets into a game. `save walls` writes `hologram/walk/1` — the
+format `walk_json.c` writes, minus the trace, because a trace is a record of
+the C stepping a world and the editor cannot honestly produce one.
+
+That emitter is checked the way the scene's is: `worldtrip.c` compiles a
+literal copied out of the panel, hands it to `holo_walk_write_json`, and the
+resulting `world` object is identical to the one in the dump.
+
+### Editing walls withdraws the trace, not the check
+
+A dumped trace is a record of the C stepping **that** world, so once the
+walls move it no longer describes the room and replaying it would report a
+broken twin when nothing about the arithmetic had changed. So the world is
+kept twice — the one you edit and walk in, and the pristine one the check
+replays — and once they differ the line says `world edited, trace withdrawn`
+rather than restating a verdict it can no longer support.
+
+The twin stays checked throughout, because `build/walk_selftest.json` is a
+synthetic world no edit can reach. That is most of why it exists.
+
 ## Walking
 
 `G` swaps the flying camera for a walking one, on the three examples that
@@ -426,11 +477,13 @@ ui/
   bench.js      the list, selection, add/delete, undo, the C panel
   oraclepanel.js  GPU, CPU, difference
   sweeppanel.js   the probe overlay, the sweep, the plot
+  planview.js   the room from above, and wall authoring
   files.js      save, save as, open, and the download fallback
   main.js       loading, the frame loop, input
 vendor/
   history.js    magma-kit's undo stack, copied — see PROVENANCE.md
 roundtrip.c     proves emit.js round-trips through the compiler
+worldtrip.c     the same, for the walk world
 ```
 
 `core/` is where correctness lives and `ui/` is the DOM — the same split
@@ -462,10 +515,9 @@ second. Correct behaviour — a page nobody is looking at should not hold the
 GPU — but it means a sweep wants the window in front of you. Forty-eight
 steps takes a second or two when it is.
 
-**No walking a scene you edited.** The walls come from the dump, and moving
-a panel in the editor does not move the box that stops you — they were never
-the same surface. Editing the walk world would mean the editor authoring
-`HoloWalkWorld`, which is a real feature and not this one.
+**Moving a panel still does not move its wall.** Both are editable now, and
+independently, which is faithful to the engine — but it means a mirror and
+the slab behind it can drift apart, and only the plan view will show you.
 
 **No walking at all outside the three examples that have a walker.** m2
 through m6 have no `HoloWalkWorld` to dump, so `G` does nothing there and the
