@@ -25,6 +25,33 @@ reads the engine's files one level up.
 `m4_glass`, `m5_spectral`, `m6_polarization`, `m7_room`, `m8_furnace`,
 `m9_spectrum`.
 
+## Opening a game's rooms
+
+The examples are in this repository; the rooms worth editing are not.
+crystal-mirror-maze dumps its First Hall into its own `build/`, so mount
+that directory and point `?dir=` at it:
+
+```
+python editor/serve.py --mount cmm=../../games/crystal-mirror-maze/build
+```
+
+then <http://127.0.0.1:8731/editor/?dir=/mount/cmm&s=cmm_hall>.
+
+Nothing is copied. Copying a game's dumps into `build/` works exactly once —
+the copy goes stale the next time the game is rebuilt and nothing says so,
+and editing a room that is not the room is the failure everything else here
+is arranged to prevent. The header shows which directory a scene came from
+whenever it is not the engine's own.
+
+Only the dumps move. The tracer is always this repository's
+`shaders/trace.glsl`, deliberately: a game's `shaders/` is a copy its build
+script made, and what the editor should show is the one the oracle holds to
+the CPU reference.
+
+Mounts are per invocation and the engine keeps no list of the games that
+consume it. Paths are resolved and confined to the mount, so a request full
+of `..` reaches nothing it was not offered.
+
 | | |
 |---|---|
 | `W` `A` `S` `D` | move |
@@ -624,7 +651,7 @@ ui/
   costpanel.js  timing the tracer, on its own surface
   files.js      save, save as, open, and the download fallback
   main.js       loading, the frame loop, input
-serve.py        the same static server, with caching off
+serve.py        the same static server, caching off, --mount for a game
 vendor/
   history.js    magma-kit's undo stack, copied — see PROVENANCE.md
 roundtrip.c     proves emit.js round-trips through the compiler

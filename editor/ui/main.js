@@ -13,6 +13,18 @@
     var ROOT = '..';
     var DESIGN_W = 640, DESIGN_H = 480;   /* the engine's design resolution */
 
+    /* Where the dumped scene, its references and its walk world are read
+       from. The engine's own build/ by default; ?dir= points somewhere else,
+       which is how a game's rooms are opened -- crystal-mirror-maze dumps
+       the First Hall into its own repository, and serve.py --mount exposes
+       that directory rather than anyone copying files across. A copy goes
+       stale the next time the game is rebuilt, and nothing would say so.
+     *
+       Only the dumps move. The tracer is always the engine's shaders/, which
+       is the point: a game's shaders/ is a copy the build script made, and
+       the editor should show what the oracle holds to the CPU reference. */
+    var DUMPS = ROOT + '/build';
+
     var $ = function (id) { return document.getElementById(id); };
 
     var state = {
@@ -592,9 +604,24 @@
     /* ---- boot ---------------------------------------------------------- */
 
     function boot() {
-        state.name = new URLSearchParams(location.search).get('s') || 'm7_room';
+        var params = new URLSearchParams(location.search);
+        state.name = params.get('s') || 'm7_room';
+        /* Trailing slash trimmed so ?dir=/mount/cmm and ?dir=/mount/cmm/ are
+           the same place rather than two with a doubled separator. */
+        var dir = (params.get('dir') || '').replace(/\/+$/, '');
+        if (dir) { DUMPS = dir; }
+        state.dumps = DUMPS;
+
         $('scene-name').textContent = state.name;
         document.title = 'hologram — ' + state.name;
+        /* Where this room came from, shown whenever it is not the engine's
+           own build/. Editing the wrong copy of a room is the failure this
+           whole arrangement exists to avoid, so the answer is on screen
+           rather than in the URL bar. */
+        if (dir) {
+            $('dumps-from').textContent = 'scenes from ' + dir;
+            $('dumps-from').hidden = false;
+        }
 
         var canvas = $('view');
         canvas.width = DESIGN_W;
@@ -613,22 +640,22 @@
            holding the packer to the C. */
         Promise.all([
             fetchText(ROOT + '/shaders/trace.glsl'),
-            fetchText(ROOT + '/build/' + state.name + '_scene.json'),
-            fetchBuffer(ROOT + '/build/' + state.name + '_params.bin')
+            fetchText(DUMPS + '/' + state.name + '_scene.json'),
+            fetchBuffer(DUMPS + '/' + state.name + '_params.bin')
                 .catch(function () { return null; }),
-            fetchBuffer(ROOT + '/build/' + state.name + '_ref.bin')
+            fetchBuffer(DUMPS + '/' + state.name + '_ref.bin')
                 .catch(function () { return null; }),
             /* Both optional: only the three examples with a walker dump a
                world, and the selftest arrives with them. */
-            fetchText(ROOT + '/build/' + state.name + '_walk.json')
+            fetchText(DUMPS + '/' + state.name + '_walk.json')
                 .then(JSON.parse).catch(function () { return null; }),
-            fetchText(ROOT + '/build/walk_selftest.json')
+            fetchText(DUMPS + '/walk_selftest.json')
                 .then(JSON.parse).catch(function () { return null; }),
-            fetchText(ROOT + '/build/' + state.name + '_pick.json')
+            fetchText(DUMPS + '/' + state.name + '_pick.json')
                 .then(JSON.parse).catch(function () { return null; }),
             /* Optional and scene-independent: whatever tools/bench last
                measured on this machine, if it was asked to write it down. */
-            fetchText(ROOT + '/build/bench.json')
+            fetchText(DUMPS + '/bench.json')
                 .then(JSON.parse).catch(function () { return null; })
         ]).then(function (loaded) {
             var shaderSrc = loaded[0], json = loaded[1], golden = loaded[2];

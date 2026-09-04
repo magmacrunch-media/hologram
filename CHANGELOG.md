@@ -277,6 +277,22 @@ The cost panel could not tell anything from anything, and said so wrongly.
   unresolved and ask for 67 to 191 more; at 400 the two positive ones
   resolve and the negative one is flagged.
 
+The editor can open a game's rooms, not just the examples.
+
+- editor/serve.py --mount NAME=PATH serves another repository's build
+  directory read-only, and ?dir= points the editor at it. The rooms worth
+  editing live in games, which are separate repositories; copying their
+  dumps into the engine's build/ works once and then goes stale on the
+  next rebuild with nothing to say so, which is exactly the failure the
+  rest of this is arranged to prevent.
+- Only the dumps move. The tracer stays this repository's shaders/, since
+  a game's copy is one its build script made and what the editor should
+  show is the one the oracle holds to the CPU reference.
+- The header names the directory a scene came from whenever it is not the
+  engine's own, so the room on screen cannot be quietly the wrong one.
+- Mounted paths are resolved and confined to their mount; the engine holds
+  no list of the games that consume it.
+
 The game release: whatever Crystal Mirror Maze development asks of the
 engine lands here.
 
