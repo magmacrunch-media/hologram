@@ -257,6 +257,9 @@
             renderInspector();
             renderEmit();
             syncDirty();
+            /* The sweep panel offers the selection's fields, so it follows
+               selection rather than polling for it. */
+            if (opts.selected) { opts.selected(); }
         }
 
         /* ---- wiring ------------------------------------------------------ */
@@ -300,6 +303,7 @@
             render: renderAll,
             renderEmit: renderEmit,
             frameSelected: frameSelected,
+            selection: function () { return sel; },
             undo: function () {
                 history.cancelStroke();
                 if (history.undo()) { syncDirty(); }

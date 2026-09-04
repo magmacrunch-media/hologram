@@ -105,6 +105,71 @@ round trip: 840 of 840 floats identical
 EMITTER OK: byte-identical
 ```
 
+## The sweep
+
+Put a detector on the image, turn one knob, plot what comes out.
+
+The **probe** is the yellow rectangle over the view — a photodiode, reading
+its area as one number. The **sweep** steps one scalar field of the selected
+primitive across a range, renders each step at the live camera, and plots
+what the probe saw. Vectors and colours are not offered: a sweep needs one
+number with an order to it, and "sweep the albedo" is three questions.
+
+Nothing here knows Malus's law. Turn a polarizer through 180° with a
+detector behind it and the law is what the curve does. That is the whole
+point of building it this way — a second copy of the optics in JavaScript
+(Fresnel, Malus, Cauchy, the grating equation) would be four more twins,
+checked by nothing, answering questions about themselves rather than about
+the tracer. A curve measured off the frame is a statement about what
+hologram actually does.
+
+**The one thing that has to be right:** the frame is sRGB-encoded, because
+`oracle.c`'s `encode_u8` applies the transfer curve on the way out. The bytes
+are not proportional to intensity, and averaging them measures nothing
+physical — read a cos² straight off them and it comes out visibly wrong.
+Every value is decoded back to linear first, then weighted Rec. 709.
+
+### Does it actually measure the physics?
+
+`m6_polarization`, probe on the two-polarizer path, sweeping the crossed
+panel through 180°:
+
+| θ | measured | cos²θ |
+|---|---|---|
+| 0° | 1.0000 | 1.0000 |
+| 30° | 0.7436 | 0.7500 |
+| 45° | 0.4929 | 0.5000 |
+| 60° | 0.2442 | 0.2500 |
+| 90° | 0.0000 | 0.0000 |
+| 135° | 0.4929 | 0.5000 |
+
+Worst deviation across the whole sweep: **0.0077**, which is sRGB
+quantisation. And the three-polarizer paradox, against the unpolarized wall
+seen through the gap between the panel groups:
+
+| path | measured | expected |
+|---|---|---|
+| crossed pair, nothing between | 0.00000 | 0 |
+| 0° / 45° / 90° | 0.12350 | 0.125 |
+
+Those are the values `tests/test_polar.c` pins in closed form — Malus at five
+angles, the three-polarizer eighth — recovered here from pixels, by a path
+that shares no code with the test.
+
+### Worth pointing it at
+
+- **A polarizer's `filter_angle`** — Malus, and an extinction ratio, which is
+  the number a real polarizer is judged by.
+- **A dish's `curv_r`** on `m8_furnace`, probe at the focus — the intensity
+  peaks where `test_geometry.c` says a paraboloid focuses, at R/2.
+- **A sphere's `disperse`** with the probe on the spectrum — Cauchy B against
+  how far the colours walk apart.
+- **`grating_period`** with the probe on one order — the order sweeping
+  across the wall as the grooves close up.
+
+A sweep restores the value it moved, so the scene is exactly as you left it.
+CSV goes to the clipboard.
+
 ## The oracle panel
 
 **oracle** renders the tracer at the reference's resolution, compares it to
@@ -234,12 +299,14 @@ core/     pure: no DOM, no WebGL
   schema.js     what a primitive's fields are, and what they mean
   emit.js       scene -> HoloScene C
   oracle.js     holo_oracle_diff's arithmetic
+  sweep.js      the probe, and what a sweep measures
 ui/
   view.js       WebGL2: compile, upload, draw, read back
   camera.js     free flight
   inspector.js  controls generated from schema.js
   bench.js      the list, selection, add/delete, undo, the C panel
   oraclepanel.js  GPU, CPU, difference
+  sweeppanel.js   the probe overlay, the sweep, the plot
   main.js       loading, the frame loop, input
 vendor/
   history.js    magma-kit's undo stack, copied — see PROVENANCE.md
@@ -273,6 +340,12 @@ C and is staying C.
 **No bench.** `tools/bench` prices a scene by panel count and is exactly what
 you want beside a budget meter, but it times the GPU from a native process.
 Running it needs somewhere to spawn one, which a page does not have.
+
+**A sweep in a background tab crawls.** The loop yields with `setTimeout` so
+the progress line paints, and a hidden tab throttles those to about one a
+second. Correct behaviour — a page nobody is looking at should not hold the
+GPU — but it means a sweep wants the window in front of you. Forty-eight
+steps takes a second or two when it is.
 
 **No walking.** Flying has no capsule, no floor and no walls. Walking the
 scene the way the game will needs `collision.c` and `timestep.c` ported as

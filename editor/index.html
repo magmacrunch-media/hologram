@@ -46,7 +46,10 @@
 
 <main>
   <div class="viewport">
-    <canvas id="view" width="640" height="480"></canvas>
+    <div class="stage">
+      <canvas id="view" width="640" height="480"></canvas>
+      <div id="probe" class="probe" hidden></div>
+    </div>
     <p id="readout" class="readout">—</p>
   </div>
 
@@ -96,6 +99,11 @@
     </section>
 
     <section>
+      <h2>sweep</h2>
+      <div id="sweep"></div>
+    </section>
+
+    <section>
       <h2>packer vs C</h2>
       <table><tbody id="packer-detail"></tbody></table>
     </section>
@@ -115,9 +123,11 @@
 <script src="core/schema.js"></script>
 <script src="core/emit.js"></script>
 <script src="core/oracle.js"></script>
+<script src="core/sweep.js"></script>
 <script src="ui/view.js"></script>
 <script src="ui/camera.js"></script>
 <script src="ui/inspector.js"></script>
 <script src="ui/bench.js"></script>
 <script src="ui/oraclepanel.js"></script>
+<script src="ui/sweeppanel.js"></script>
 <script src="ui/main.js"></script>

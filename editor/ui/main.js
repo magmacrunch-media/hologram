@@ -326,9 +326,10 @@
                 state.shaderSource = src;
                 $('error').hidden = true;
                 invalidate();
-                /* The oracle panel compiles its own copy; drop it so the
-                   next run picks up the tracer that was just loaded. */
+                /* The oracle and sweep panels each compile their own copy;
+                   drop both so the next run picks up what was just loaded. */
                 if (state.oracle) { state.oracle.reset(); }
+                if (state.sweep) { state.sweep.reset(); }
             }).catch(function (e) { fail('shader reload', e); });
         });
 
@@ -420,8 +421,29 @@
                 changed: function () {
                     showBudget();
                     invalidate();
+                },
+                selected: function () {
+                    if (state.sweep) { state.sweep.render(); }
                 }
             });
+
+            state.sweep = root.sweeppanel.create({
+                host: 'sweep',
+                overlay: 'probe',
+                doc: function () { return state.doc; },
+                camera: function () { return state.cam; },
+                spectral: function () { return state.spectral; },
+                shaderSource: function () { return state.shaderSource; },
+                selection: function () {
+                    return state.bench ? state.bench.selection() : null;
+                },
+                width: function () { return DESIGN_W; },
+                height: function () { return DESIGN_H; },
+                /* A sweep restores the value it moved, so the live view is
+                   showing the pre-sweep scene again and must be repainted. */
+                onDone: function () { invalidate(); }
+            });
+            state.sweep.render();
 
             state.oracle = root.oraclepanel.create({
                 host: 'oracle',

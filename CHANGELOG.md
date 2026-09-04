@@ -77,6 +77,27 @@ The oracle panel: `tools/gldiff` absorbed.
   to use oracle.c's arithmetic. Which mean is the right one is an engine
   decision and nothing here has been changed to force it.
 
+The sweep: a detector on the image, and one knob turned under it.
+
+- A probe rectangle over the view reads its area as one number, and a
+  sweep steps one scalar field of the selected primitive across a range,
+  rendering each step and plotting what the probe saw.
+- It measures the renderer instead of restating the theory beside it.
+  Nothing in `editor/core/sweep.js` knows Malus's law; turning a polarizer
+  with a detector behind it is what produces the cosine. A JavaScript copy
+  of Fresnel, Malus, Cauchy and the grating equation would have been four
+  more twins checked by nothing, answering questions about themselves.
+- Values are decoded from sRGB to linear before averaging. `encode_u8`
+  applies the transfer curve on the way out, so the bytes are not
+  proportional to intensity and a cos^2 read straight off them is visibly
+  wrong.
+- Checked against the closed forms the host tests already pin, by a path
+  sharing no code with them. Sweeping m6_polarization's crossed panel
+  through 180 degrees reproduces cos^2 to a worst deviation of 0.0077,
+  which is sRGB quantisation; the three-polarizer paradox measures 0.12350
+  against the unpolarized wall, where test_polar.c pins an eighth, and a
+  crossed pair with nothing between them reads a true zero.
+
 The game release: whatever Crystal Mirror Maze development asks of the
 engine lands here.
 

@@ -53,6 +53,37 @@ canvas {
 
 .readout { color: var(--dim); margin: 6px 0 0; }
 
+/* ---- the probe, and the sweep it feeds -------------------------------- */
+
+.stage { position: relative; line-height: 0; }
+.probe[hidden] { display: none; }
+.probe {
+  position: absolute; pointer-events: none;
+  border: 1px solid #f5c311; box-shadow: 0 0 0 1px #0008;
+  background: #f5c3111a;
+}
+
+.srow { display: flex; align-items: center; gap: 5px; margin: 5px 0; }
+.srow .flabel { flex: 0 0 auto; margin: 0; }
+.srow .fnum { flex: 1 1 0; min-width: 0; }
+.srow .fsel { flex: 1; min-width: 0; }
+.srow button { margin: 0; }
+
+.plot { width: 100%; height: auto; display: block; margin: 8px 0 4px; }
+.plot .axis { stroke: currentColor; stroke-width: 1; opacity: .35; }
+.plot .curve { fill: none; stroke: currentColor; stroke-width: 1.5; }
+.plot .dot { fill: currentColor; opacity: .55; }
+.plot .tick, .plot .axlabel {
+  fill: currentColor; opacity: .6; font-size: 9px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+
+.sstats { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+.sstats td { padding: 1px 0; color: var(--dim); }
+.sstats td.snum {
+  text-align: right; color: inherit; font-variant-numeric: tabular-nums;
+}
+
 /* The panels scroll themselves. A rect has fifteen fields and a full room
    has thirty-odd primitives, and letting that grow the page instead would
    scroll the view out from under you while you are editing what is in it. */

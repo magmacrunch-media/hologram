@@ -324,6 +324,15 @@ server. See `editor/README.md` for what that panel does and does not
 claim, and for a difference between oracle.c's mean and gldiff's that the
 table below inherits.
 
+And it measures. Put the probe rectangle on the image, sweep one field of
+one primitive, and read the curve off the render: a polarizer's angle
+gives Malus and an extinction ratio, a dish's vertex radius gives the
+focus, a Cauchy coefficient gives the spread. Nothing in the editor knows
+those laws -- they are what the tracer does, measured. Sweeping
+`m6_polarization` reproduces cos^2 to 0.0077 and the three-polarizer
+eighth to 0.12350, which are the numbers `tests/test_polar.c` holds in
+closed form, arrived at from pixels by a path sharing no code with it.
+
 Packing a scene into the uniform block is a **fifth statement** of a layout
 already written four times (`HoloGpuScene` and the three shader dialects), so
 it is held the way the others are. `build/<name>_params.bin` from a `--dump`
