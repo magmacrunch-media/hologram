@@ -31,6 +31,22 @@
  * behind sg_commit, so an End() in each brackets exactly the pass. Elsewhere
  * it falls back to the frame clock, which includes CPU time and present, and
  * says so in its output rather than quietly reporting a worse number.
+ *
+ * Read the milliseconds, not the multiple. The vs-1-panel column divides
+ * by the smallest number in the table, which is also the least stable one:
+ * at a fifth of a millisecond there is very little there to measure, and a
+ * stray scheduling or clock event is a large fraction of it. Five runs of
+ * 600 frames on one machine, nothing changed between them, gave
+ *
+ *     24 panels   2.016 .. 2.111 ms    (+-2%)
+ *      1 panel    0.201 .. 0.310 ms    (+-45%)
+ *     the ratio   6.79x .. 10.04x
+ *
+ * -- so the full room is the reliable figure and the multiple is the one
+ * that moves. Budget a scene in milliseconds; read the ratio as the shape
+ * of the cost, which is what it is good for, and not as a number to hold
+ * a regression to. Comparing two shaders is fine either way, since the
+ * baseline moves for both of them.
  */
 #include <stdio.h>
 #include <stdlib.h>
