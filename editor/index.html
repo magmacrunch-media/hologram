@@ -1,0 +1,123 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>hologram</title>
+<link rel="stylesheet" href="style.css">
+<!--
+  hologram's editor.
+
+  Serve the REPOSITORY ROOT, not this directory -- the page reads the
+  engine's files in place, one level up:
+
+      python -m http.server 8731 --bind 127.0.0.1
+      http://127.0.0.1:8731/editor/?s=m7_room
+
+  A scene comes from build/<name>_scene.json, which any example writes with
+  --dump. If you have not dumped one yet:
+
+      build.bat
+      build\m7_room.exe --dump
+
+  Script order is dependency order and is load-bearing: core/ before ui/,
+  and linalg before everything that does arithmetic. There is no bundler
+  here on purpose -- the engine has no package manager and this page is not
+  the reason to give it one.
+-->
+
+<header>
+  <h1>hologram</h1>
+  <span id="scene-name" class="scene">—</span>
+  <span id="dirty" class="dirty" hidden>edited</span>
+  <span class="tools">
+    <button id="undo" title="undo  (Ctrl+Z)" disabled>undo</button>
+    <button id="redo" title="redo  (Ctrl+Shift+Z)" disabled>redo</button>
+    <button id="emit-toggle" title="the scene as a HoloScene literal">show C</button>
+    <button id="emit-copy" hidden>copy</button>
+    <button id="oracle-toggle"
+            title="hold trace.glsl to the CPU reference">oracle</button>
+  </span>
+  <span id="lock-hint" class="hint">click the view to look around</span>
+</header>
+
+<p id="banner">loading…</p>
+<pre id="error" hidden></pre>
+
+<textarea id="emit" spellcheck="false" hidden></textarea>
+<div id="oracle" class="oracle" hidden></div>
+
+<main>
+  <div class="viewport">
+    <canvas id="view" width="640" height="480"></canvas>
+    <p id="readout" class="readout">—</p>
+  </div>
+
+  <aside class="bench">
+    <section>
+      <h2>scene</h2>
+      <div id="list" class="list"></div>
+    </section>
+
+    <section>
+      <h2><span id="sel-title">nothing selected</span></h2>
+      <div id="sel-tools" class="seltools"></div>
+      <div id="sel-body"></div>
+    </section>
+  </aside>
+
+  <aside>
+    <section>
+      <h2>budget</h2>
+      <table><tbody id="budget"></tbody></table>
+      <p id="grating-warning" class="warn" hidden></p>
+    </section>
+
+    <section>
+      <h2>view</h2>
+      <label class="row">
+        <input type="checkbox" id="spectral">
+        <span>spectral <span class="key">P</span></span>
+      </label>
+      <label class="row">
+        <span>fov</span>
+        <input type="range" id="fov" min="20" max="120" step="1" value="70">
+        <span id="fov-value" class="num">70°</span>
+      </label>
+      <button id="reload-shader">reload trace.glsl</button>
+    </section>
+
+    <section>
+      <h2>fly</h2>
+      <p class="keys">
+        <span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> move
+        · <span class="key">Q</span><span class="key">E</span> down/up
+        · <span class="key">shift</span> faster
+        · <span class="key">R</span> back to the scene's camera
+        · <span class="key">F</span> look at the selection
+      </p>
+    </section>
+
+    <section>
+      <h2>packer vs C</h2>
+      <table><tbody id="packer-detail"></tbody></table>
+    </section>
+
+    <section>
+      <h2>renderer</h2>
+      <p id="renderer" class="mono">—</p>
+    </section>
+  </aside>
+</main>
+
+<script src="vendor/history.js"></script>
+<script src="core/linalg.js"></script>
+<script src="core/spectrum.js"></script>
+<script src="core/caps.js"></script>
+<script src="core/scene.js"></script>
+<script src="core/schema.js"></script>
+<script src="core/emit.js"></script>
+<script src="core/oracle.js"></script>
+<script src="ui/view.js"></script>
+<script src="ui/camera.js"></script>
+<script src="ui/inspector.js"></script>
+<script src="ui/bench.js"></script>
+<script src="ui/oraclepanel.js"></script>
+<script src="ui/main.js"></script>

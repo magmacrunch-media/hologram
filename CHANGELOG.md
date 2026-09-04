@@ -4,6 +4,79 @@ All notable changes to the hologram engine are documented here.
 
 ## v0.2.0 (unreleased)
 
+### The editor
+
+`editor/` -- a page that runs `shaders/trace.glsl` in WebGL2 and flies a
+camera around a scene while it renders. No build step and no dependency; it
+reads the engine's own files in place, on the arrangement `tools/gldiff`
+proved. Shows the primitive budget against the caps, and reloads the tracer
+from disk on a keypress.
+
+- `source/scene_json.c` writes a scene out as JSON. Write-only on purpose:
+  no parser, so nothing at runtime gained a dependency or a failure mode.
+  `holo_oracle_dump()` now emits `build/<name>_scene.json` beside the
+  `params.bin` and `ref.bin` it already wrote, so every example that takes
+  `--diff` opens in the editor with no change to its `main.c`.
+- Floats are written at the shortest spelling that reads back bit-exact
+  through `strtof`, so a scene round-trips exactly and still diffs like a
+  file a person wrote.
+- `editor/core/scene.js` is a fifth statement of the uniform block's layout,
+  and is held to the four that came before it: it packs a scene C already
+  packed and compares against `params.bin` float by float, in the page. All
+  eight dumped examples pass, with every geometry field bit-identical.
+- `tests/test_scene_json.c`, 58 checks.
+
+The scene bench: the room as a list, an inspector, and the C it emits.
+
+- `editor/core/schema.js` is what a primitive's fields ARE -- name, kind,
+  range, meaning. The panels are generated from it and nothing in `ui/`
+  knows what a sphere is, so a new material field on `HoloRect` is a line
+  in a table rather than new UI. The help text is `cpu_trace.h`'s own
+  comments, which is where the material model is actually explained.
+- Fields the engine will ignore given the rest of the primitive -- `ior`
+  with no transmit, `retard` on a polarizer, `grating_angle` with no
+  period -- are greyed with the reason rather than hidden, and
+  re-evaluate as you edit.
+- Adding is refused at the cap, with the consequence named. Three gratings
+  warns loudly: the third renders matte black on the GPU while the CPU
+  oracle renders it correctly, which is a scene that passes its own
+  `--diff` and ships wrong.
+- `editor/core/emit.js` writes the scene back out as a `HoloScene`
+  designated-initializer block plus its `holo_camera_make` call. Zero
+  fields omitted, floats at the shortest spelling that reads back exact.
+- `editor/roundtrip.c` proves it: a literal copied verbatim out of the
+  panel, compiled and packed, reproduces the block `--dump` wrote. 840 of
+  840 floats identical.
+- Undo is magma-kit's `history.js`, copied into `editor/vendor/` with its
+  provenance recorded rather than taking the kit's whole sync contract for
+  one file. A slider drag is one undo entry.
+
+The oracle panel: `tools/gldiff` absorbed.
+
+- `editor/core/oracle.js` is `holo_oracle_diff`'s arithmetic, and the panel
+  draws GPU, CPU and the difference at 8x, with oracle.c's verdict. It
+  reproduces `gldiff.html` exactly on all eight dumped examples -- mean,
+  max and outlier share -- with no second page and no second server.
+- It always diffs the scene AS DUMPED, never the edited one: the CPU
+  reference is a render of that scene, and a JavaScript `cpu_trace.c`
+  would be a sixth statement of the tracer checked by nothing. The panel
+  says so when the scene has been edited.
+- Found in the process: **`oracle.c` and `gldiff.html` do not compute the
+  same mean.** oracle.c breaks out of the channel loop on the first channel
+  off by more than 8, so an outlier pixel's remaining channels never reach
+  the sum, and `max` stops moving as well; gldiff sums all three. On
+  m7_room that is 0.0888 against 0.1976 for identical pixels. The outlier
+  share, computed the same way in both, agrees exactly.
+
+  This reaches the README's pass table, whose D3D11 column is oracle.c's
+  mean and whose WebGL2 column is gldiff's. Measured with one statistic the
+  two columns very nearly coincide -- m4_glass 0.1161 both ways, m5_spectral
+  0.1183, m8_furnace 0.0185 -- so WebGL2 agrees with the oracle about as
+  closely as D3D11 does, and the table's apparent divergence is mostly the
+  statistic changing between columns. gldiff.html's header no longer claims
+  to use oracle.c's arithmetic. Which mean is the right one is an engine
+  decision and nothing here has been changed to force it.
+
 The game release: whatever Crystal Mirror Maze development asks of the
 engine lands here.
 

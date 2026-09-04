@@ -1,0 +1,226 @@
+/* Plain, and light/dark by the reader's setting -- tools/gldiff's posture.
+   The view is the thing on this page worth looking at; nothing here should
+   compete with it. */
+
+:root {
+  color-scheme: light dark;
+  --line: #8888;
+  --dim: color-mix(in srgb, currentColor 60%, transparent);
+  --ok: #12805c;
+  --bad: #c0362c;
+  --warnbg: #f5c31122;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --ok: #4ade80; --bad: #f87171; }
+}
+
+body {
+  font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace;
+  margin: 16px;
+}
+
+header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+h1 { font-size: 15px; margin: 0; letter-spacing: .08em; }
+h2 {
+  font-size: 11px; margin: 0 0 6px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--dim);
+}
+.scene { color: var(--dim); }
+.hint { margin-left: auto; color: var(--dim); }
+
+#banner { font-weight: 700; margin: 10px 0 4px; }
+#banner.ok { color: var(--ok); }
+#banner.bad { color: var(--bad); }
+
+#error {
+  white-space: pre-wrap; border: 1px solid var(--bad);
+  color: var(--bad); padding: 8px; margin: 8px 0; max-height: 40vh;
+  overflow: auto;
+}
+
+main { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+.viewport { flex: 1 1 640px; min-width: 320px; }
+
+/* The tracer renders at the engine's design resolution and is scaled up, so
+   the pixels stay the pixels the shader wrote. */
+canvas {
+  width: 100%; height: auto; display: block;
+  border: 1px solid var(--line);
+  image-rendering: pixelated;
+  cursor: crosshair;
+  background: #000;
+}
+
+.readout { color: var(--dim); margin: 6px 0 0; }
+
+/* The panels scroll themselves. A rect has fifteen fields and a full room
+   has thirty-odd primitives, and letting that grow the page instead would
+   scroll the view out from under you while you are editing what is in it. */
+aside {
+  flex: 0 0 260px; display: flex; flex-direction: column; gap: 18px;
+  max-height: calc(100vh - 90px); overflow-y: auto; overscroll-behavior: contain;
+  padding-right: 4px;
+}
+section { border-top: 1px solid var(--line); padding-top: 10px; }
+
+table { border-collapse: collapse; width: 100%; }
+td { padding: 1px 0; }
+td.num { text-align: right; padding-left: 8px; font-variant-numeric: tabular-nums; }
+td.sep { padding: 0 3px; color: var(--dim); }
+td.note { text-align: right; color: var(--dim); font-size: 11px; }
+tr.full td.note { color: var(--ok); }
+tr.over td, tr.over td.note { color: var(--bad); font-weight: 700; }
+
+.warn {
+  color: var(--bad); background: var(--warnbg);
+  border-left: 3px solid var(--bad); padding: 6px 8px; margin: 8px 0 0;
+}
+
+.row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.row input[type="range"] { flex: 1; min-width: 0; }
+.num { font-variant-numeric: tabular-nums; }
+
+button {
+  font: inherit; padding: 3px 8px; margin-top: 8px;
+  border: 1px solid var(--line); background: transparent; color: inherit;
+  cursor: pointer;
+}
+button:hover { border-color: currentColor; }
+
+/* ---- the bench ---------------------------------------------------- */
+
+aside.bench { flex: 0 0 300px; }
+header .tools { display: flex; gap: 4px; margin-left: 12px; }
+header .tools button { margin-top: 0; padding: 1px 7px; }
+.dirty {
+  color: var(--bad); border: 1px solid var(--bad); border-radius: 3px;
+  padding: 0 5px; font-size: 11px;
+}
+
+.list { display: flex; flex-direction: column; }
+.lhead {
+  display: flex; align-items: center; gap: 6px;
+  margin: 8px 0 2px; color: var(--dim);
+  font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+}
+.lhead:first-child { margin-top: 0; }
+.lname { flex: 1; }
+.lcount { font-variant-numeric: tabular-nums; }
+.ladd {
+  margin: 0; padding: 0 6px; line-height: 1.3; font-size: 13px;
+}
+.ladd:disabled { opacity: .35; cursor: not-allowed; }
+
+.lrow {
+  display: flex; align-items: center; gap: 8px;
+  padding: 2px 5px; cursor: pointer; border: 1px solid transparent;
+}
+.lrow:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+.lrow.sel {
+  border-color: currentColor;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.lidx {
+  color: var(--dim); font-variant-numeric: tabular-nums; min-width: 1.4em;
+}
+.ldesc { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ldel {
+  margin: 0; padding: 0 5px; border-color: transparent; opacity: 0;
+  line-height: 1.2;
+}
+.lrow:hover .ldel { opacity: .7; }
+.ldel:hover { opacity: 1; color: var(--bad); border-color: var(--bad); }
+.lrow.scene .ldesc { color: var(--dim); font-style: italic; }
+
+.seltools { display: flex; gap: 6px; margin-bottom: 8px; }
+.seltools button { margin-top: 0; }
+.seltools button:disabled { opacity: .35; cursor: not-allowed; }
+
+/* ---- inspector fields ---------------------------------------------- */
+
+.field { margin: 0 0 7px; }
+.field.inert { opacity: .45; }
+.flabel {
+  display: block; font-size: 11px; color: var(--dim); margin-bottom: 2px;
+}
+.flabel[title] { cursor: help; border-bottom: 1px dotted var(--line);
+                 display: inline-block; }
+.fctl { display: flex; align-items: center; gap: 5px; }
+.fvec { gap: 4px; }
+.fvecbox { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.fsub { font-size: 10px; color: var(--dim); }
+.fnum {
+  font: inherit; font-size: 12px; width: 100%; min-width: 0;
+  padding: 1px 3px; background: transparent; color: inherit;
+  border: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+.fctl > .fnum { flex: 0 0 5.5em; }
+.frange { flex: 1; min-width: 0; }
+.funit { font-size: 11px; color: var(--dim); }
+.fsel {
+  font: inherit; font-size: 12px; padding: 1px 3px;
+  background: transparent; color: inherit; border: 1px solid var(--line);
+}
+.fswatch {
+  width: 26px; height: 20px; padding: 0; border: 1px solid var(--line);
+  background: transparent; flex: 0 0 auto;
+}
+.flink {
+  margin: 2px 0 0; padding: 0 5px; font-size: 11px; color: var(--dim);
+  border-color: transparent;
+}
+.flink:hover { color: inherit; border-color: var(--line); }
+.finert {
+  display: block; font-size: 11px; color: var(--dim); font-style: italic;
+  margin-top: 1px;
+}
+
+/* ---- the emitted C -------------------------------------------------- */
+
+/* `display` beats the hidden attribute, so hidden has to be said again --
+   otherwise the panel is open from the first paint. */
+#emit[hidden] { display: none; }
+#emit {
+  display: block; width: 100%; box-sizing: border-box; height: 34vh;
+  margin: 8px 0; padding: 8px; resize: vertical;
+  font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace;
+  background: transparent; color: inherit; border: 1px solid var(--line);
+  white-space: pre; overflow: auto;
+}
+
+/* ---- the oracle panel ------------------------------------------------ */
+
+.oracle[hidden] { display: none; }
+.oracle {
+  display: block; margin: 8px 0; padding: 10px;
+  border: 1px solid var(--line);
+}
+.oracle .verdict { font-weight: 700; margin: 0 0 4px; }
+.oracle .verdict.ok { color: var(--ok); }
+.oracle .verdict.bad { color: var(--bad); }
+.oracle .note { margin: 2px 0; color: var(--dim); }
+.oracle .bad { color: var(--bad); }
+.oracle .warnline {
+  color: var(--bad); background: var(--warnbg);
+  border-left: 3px solid var(--bad); padding: 6px 8px; margin: 8px 0;
+}
+/* Three 640-wide frames will not fit; they scroll rather than shrink,
+   because a difference image resampled is a difference image lying. */
+.oracle .strip {
+  display: flex; gap: 12px; margin-top: 10px;
+  overflow-x: auto; padding-bottom: 6px;
+}
+.oracle figure { margin: 0; flex: 0 0 auto; }
+.oracle canvas {
+  display: block; border: 1px solid var(--line);
+  image-rendering: pixelated; width: auto; height: auto; max-width: none;
+}
+.oracle figcaption { color: var(--dim); padding-top: 4px; font-size: 11px; }
+
+.keys { margin: 0; color: var(--dim); }
+.key {
+  display: inline-block; border: 1px solid var(--line); border-radius: 3px;
+  padding: 0 4px; margin: 0 1px; font-size: 11px; color: inherit;
+}
+.mono { margin: 0; color: var(--dim); word-break: break-word; }

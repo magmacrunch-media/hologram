@@ -247,7 +247,7 @@ testable, the discipline magnolia's `timestep.c` was extracted for.
 build.bat test
 ```
 
-**382 checks across 8 suites**, each test a standalone binary. They assert
+**438 checks across 9 suites**, each test a standalone binary. They assert
 physics, not pixels: Snell's angles into n=1.5 glass, the 41.81° critical
 angle, 4% reflectance at normal incidence, a vanishing p-component at
 Brewster's angle, Malus's law at five angles, the three-polarizer paradox to
@@ -285,12 +285,70 @@ passes all eight oracle diffs through the translation stack. A Wine or
 Proton build of a hologram game must ship that DLL -- it is a Microsoft
 redistributable -- or precompile its shaders.
 
-## Not in the engine, by design
+## The editor
 
-No editor, no ECS, no general physics engine, no mesh import, no skinned
-animation, no GUI toolkit. Neither target game needs any of them, and each
-would cost more than it returns. Scenes are built in code from primitives;
-collision is a capsule against axis-aligned walls.
+```
+build.bat
+build\m7_room.exe --dump
+python -m http.server 8731 --bind 127.0.0.1
+```
+
+Then <http://127.0.0.1:8731/editor/?s=m7_room>.
+
+`editor/` runs `shaders/trace.glsl` in WebGL2 and flies a camera around a
+scene while it renders -- the engine's own tracer, not a preview of it, on the
+arrangement `tools/gldiff` proved. It reads the engine's files in place: the
+shader from `shaders/`, the scene from the `build/<name>_scene.json` that any
+example writes with `--dump`. Every example opens in it.
+
+The room is a list you can edit: select a panel, tune its material against the
+real tracer, and take the result away as the `HoloScene` literal that built
+it. The inspector is generated from a field table rather than hand-written,
+and carries `cpu_trace.h`'s own comments as its help; fields the engine will
+ignore given the rest of the primitive say so instead of sitting there
+looking live.
+
+It shows the budget against the caps while you look at the room -- 24 rects, 8
+spheres, 4 dishes, and the two GPU grating slots whose third entry renders
+matte black on the GPU while the CPU oracle renders it correctly. Adding is
+refused at the cap rather than allowed and silently dropped by the tracer.
+
+What it emits is checked, not asserted: `editor/roundtrip.c` compiles a
+literal copied out of the editor and packs it, and gets the block `--dump`
+wrote back byte for byte.
+
+It also holds the tracer to the oracle in place -- GPU frame, CPU reference
+and their difference, on oracle.c's bars -- reproducing `tools/gldiff`
+exactly on all eight dumped examples without a second page or a second
+server. See `editor/README.md` for what that panel does and does not
+claim, and for a difference between oracle.c's mean and gldiff's that the
+table below inherits.
+
+Packing a scene into the uniform block is a **fifth statement** of a layout
+already written four times (`HoloGpuScene` and the three shader dialects), so
+it is held the way the others are. `build/<name>_params.bin` from a `--dump`
+*is* the block C packed; the editor packs the same scene in JavaScript and
+compares float by float, reporting the result in the page. Across the eight
+dumped examples every geometry field comes back bit-identical, and the only
+floats that differ at all are the ones C computes with `expf` and `cosf` and
+JavaScript with `Math.exp` and `Math.cos`: the CIE weights and the filter and
+groove axes, worst case 5.96e-8. A field written to the wrong slot is wrong by
+its own magnitude, five orders of magnitude above that bar.
+
+No build step, no package manager, no dependency -- it is a page, like
+`tools/gldiff` is a page.
+
+## Not in the engine
+
+No ECS, no general physics engine, no mesh import, no skinned animation, no
+GUI toolkit. Neither target game needs any of them, and each would cost more
+than it returns. Scenes are built in code from primitives; collision is a
+capsule against axis-aligned walls.
+
+Scenes are still built in code. `holo_scene_write_json` writes one out, for
+the editor and for anything else that wants to read a scene, but there is no
+reader: a parser in C99 would be a runtime dependency, a new way for a shipped
+game to fail, and a second way to build a scene competing with the first.
 
 ## Dependencies
 

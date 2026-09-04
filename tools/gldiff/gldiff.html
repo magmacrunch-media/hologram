@@ -10,7 +10,17 @@
   context, which is the same dialect sokol's GLES3 backend feeds, and close
   enough to the GL 4.1 profile that a mistake in one is nearly always a
   mistake in both. So: render the tracer here, and compare against a frame
-  the CPU oracle rendered, using oracle.c's own arithmetic and its own bars.
+  the CPU oracle rendered, using oracle.c's bars.
+
+  NOT oracle.c's mean, though: oracle.c breaks out of the channel loop on
+  the first channel off by more than 8, so an outlier pixel's later
+  channels never reach its sum, and its max stops moving too. This page
+  sums all three. The two agree on a clean frame and part company in
+  proportion to the outlier count -- on m7_room, 0.1976 here against
+  0.0888 there, for the very same pixels. The outlier percentage, which
+  is computed the same way in both, agrees exactly.
+
+  editor/ renders this same comparison and reports both numbers.
 
   A passing verdict here means the GLSL tracer agrees with cpu_trace.c. It
   is not a substitute for running an example with --diff natively on Linux
