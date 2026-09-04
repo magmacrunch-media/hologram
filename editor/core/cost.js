@@ -48,16 +48,33 @@
         return s[s.length >> 1];
     }
 
-    /* The middle half's width: a noise floor that a couple of stray frames
-       cannot inflate the way a min-to-max range can. Anything smaller than
-       this is not a measurement, and saying so is the only honest thing to
-       print -- a difference below the noise comes out NEGATIVE about half
-       the time, and a table that reports a panel making the frame cheaper
-       has stopped describing the renderer. */
+    /* The middle half's width: how much one frame differs from the next. A
+       couple of stray frames cannot inflate it the way a min-to-max range
+       can. */
     function spread(xs) {
         if (xs.length < 4) { return Infinity; }
         var s = xs.slice().sort(function (a, b) { return a - b; });
         return s[Math.floor(s.length * 0.75)] - s[Math.floor(s.length * 0.25)];
+    }
+
+    /* How far the MEDIAN itself could be out, which is a different and much
+       smaller quantity than the frame-to-frame spread.
+     *
+       Getting this wrong is what made the first version of this panel useless:
+       it compared the difference between two stages against the spread of
+       individual frames, and so reported "below noise" for every row on every
+       backend -- including differences it could comfortably resolve. Frame
+       jitter of 0.6 ms across forty frames leaves the median good to about
+       0.09, and the panels in m7_room move it by 0.19.
+
+       sigma from the IQR by the normal approximation, then the standard error
+       of a median, which carries its own constant. Neither is exact for a
+       distribution with a tail on one side -- a frame can be slow and cannot
+       be fast -- so the comparison below asks for two of these, not one. */
+    function medianError(iqr, n) {
+        if (!isFinite(iqr) || n < 4) { return Infinity; }
+        var sigma = iqr / 1.349;
+        return 1.2533 * sigma / Math.sqrt(n);
     }
 
     /* Zero, then bench's ladder: 1, 2, 4, 8 ... and the count itself.
@@ -85,35 +102,64 @@
     function decompose(stages) {
         var zero = stages.filter(function (s) { return s.panels === 0; })[0];
         var fixed = zero ? zero.ms : 0;
-        var noise = zero && isFinite(zero.spread) ? zero.spread : 0;
+        var zeroErr = zero ? medianError(zero.spread, zero.samples) : Infinity;
+
         var rows = stages.filter(function (s) { return s.panels > 0; })
             .map(function (s) {
                 var added = s.ms - fixed;
+                /* Two medians, each with its own uncertainty, so the
+                   difference carries both. Two of those is the band a
+                   difference has to clear before it is worth printing. */
+                var err = Math.sqrt(zeroErr * zeroErr +
+                    Math.pow(medianError(s.spread, s.samples), 2));
+                var band = 2 * err;
+                var resolved = Math.abs(added) > band;
+                /* A panel cannot make the frame cheaper, so a resolved
+                   NEGATIVE difference is not a measurement of the panels --
+                   it is drift. The stages run in sequence, one after
+                   another, so anything that changes over the run (clocks
+                   ramping, the machine warming, another window waking up)
+                   lands on the later stages and looks exactly like a
+                   panel-count effect. Worth saying rather than printing as
+                   though it meant something. */
+                var suspect = resolved && added < 0;
                 return {
                     panels: s.panels,
                     ms: s.ms,
                     added: added,
                     perPanel: s.panels ? added / s.panels : 0,
-                    /* Not "small": unmeasurable. Below the noise the sign
-                       itself is a coin toss. */
-                    belowNoise: Math.abs(added) < noise
+                    band: band,
+                    belowNoise: !resolved,
+                    suspect: suspect,
+                    /* The uncertainty falls as the square root of the frame
+                       count, so this is how many frames would put the
+                       difference outside the band -- which turns "cannot
+                       tell" into something to do about it. */
+                    framesNeeded: (!resolved && Math.abs(added) > 0 &&
+                                   isFinite(band) && s.samples)
+                        ? Math.ceil(s.samples * Math.pow(band / Math.abs(added), 2))
+                        : null
                 };
             });
+
+        var unresolved = rows.filter(function (r) { return r.belowNoise; });
         return {
             fixed: fixed,
-            noise: noise,
+            noise: zero && isFinite(zero.spread) ? zero.spread : 0,
             rows: rows,
             /* When even the fullest scene cannot be told from the empty one,
-               the panels are not what this frame is spending its time on --
-               which is the finding, not a failure of the measurement. */
-            allBelowNoise: rows.length > 0 && rows.every(function (r) {
-                return r.belowNoise;
-            })
+               either the panels are not where this frame goes or the run was
+               too short to say. `suggestFrames` is what distinguishes them. */
+            allBelowNoise: rows.length > 0 && unresolved.length === rows.length,
+            suggestFrames: unresolved.reduce(function (a, r) {
+                return r.framesNeeded && r.framesNeeded > a ? r.framesNeeded : a;
+            }, 0),
+            drifted: rows.some(function (r) { return r.suspect; })
         };
     }
 
     root.cost = {
-        median: median, spread: spread, stages: stages, truncated: truncated,
-        decompose: decompose
+        median: median, spread: spread, medianError: medianError,
+        stages: stages, truncated: truncated, decompose: decompose
     };
 }(window.Hologram = window.Hologram || {}));

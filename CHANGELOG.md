@@ -254,6 +254,29 @@ A cost panel, and tools/bench --json.
   panel says so and points at the spectral row: 8.61 ms spectral against
   0.58 ms in RGB, nearly fifteen to one for the twelve wavelengths.
 
+The cost panel could not tell anything from anything, and said so wrongly.
+
+- Every row read "below noise" on every backend, including a real GPU. The
+  threshold was comparing each difference against the interquartile spread
+  of INDIVIDUAL FRAMES, which is how much one frame differs from the next
+  and not the uncertainty of a median. Frame jitter of 0.5 ms across sixty
+  frames leaves the median good to about 0.08, so differences it could
+  comfortably resolve were being declared unmeasurable.
+- It now uses the standard error of the median -- sigma from the IQR, then
+  the median's own constant -- and asks a difference to clear two of them,
+  one from each stage.
+- Because that error falls as the square root of the frame count, a row
+  that still cannot be resolved now reports how many frames WOULD resolve
+  it. "below noise" becomes "needs ~151 frames", which is something to do
+  rather than a dead end.
+- A resolved NEGATIVE difference is reported as drift rather than as a
+  measurement. Stages run in sequence, so anything changing over a run --
+  clocks ramping, the machine warming -- lands on the later ones and looks
+  like a panel-count effect; a panel cannot make a frame cheaper.
+- Verified against directly measured data: at 32 frames m7_room's rows are
+  unresolved and ask for 67 to 191 more; at 400 the two positive ones
+  resolve and the negative one is flagged.
+
 The game release: whatever Crystal Mirror Maze development asks of the
 engine lands here.
 

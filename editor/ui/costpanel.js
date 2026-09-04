@@ -215,7 +215,7 @@
                                    status, panels + ' panels', n);
                 }).then(function (r) {
                     out.stages.push({ panels: panels, ms: r.ms,
-                                      spread: r.spread,
+                                      spread: r.spread, samples: r.samples,
                                       discarded: r.discarded });
                     if (r.abandoned) { out.abandoned = true; }
                 });
@@ -272,7 +272,7 @@
             host.appendChild(el('p', 'note',
                 'everything that is not a panel: ' + d.fixed.toFixed(3) +
                 ' ms  (spheres, dishes, floor, sky, and the wavelengths), ' +
-                'noise +-' + d.noise.toFixed(3)));
+                'frame jitter +-' + d.noise.toFixed(3)));
 
             var t = el('table', 'benchtable');
             var head = el('tr');
@@ -285,9 +285,15 @@
                 tr.appendChild(el('td', null, String(r.panels)));
                 tr.appendChild(el('td', 'num', r.ms.toFixed(3)));
                 if (r.belowNoise) {
-                    var cell = el('td', 'num dim', 'below noise');
+                    var cell = el('td', 'num dim',
+                        r.framesNeeded ? 'needs ~' + r.framesNeeded + ' frames'
+                                       : 'below noise');
                     cell.colSpan = 2;
                     tr.appendChild(cell);
+                } else if (r.suspect) {
+                    var s = el('td', 'num dim', r.added.toFixed(3) + ' — drift');
+                    s.colSpan = 2;
+                    tr.appendChild(s);
                 } else {
                     tr.appendChild(el('td', 'num', r.added.toFixed(3)));
                     tr.appendChild(el('td', 'num', r.perPanel.toFixed(4)));
@@ -296,12 +302,31 @@
             });
             host.appendChild(t);
 
+            if (d.drifted) {
+                host.appendChild(el('p', 'note bad',
+                    'A panel cannot make the frame cheaper, so a negative ' +
+                    'difference that clears the band is drift, not panels. ' +
+                    'The stages run one after another, so anything changing ' +
+                    'over the run — clocks ramping, the machine warming, ' +
+                    'another window waking — lands on the later stages and ' +
+                    'looks like a panel-count effect. Measure again on a ' +
+                    'settled machine before believing any row.'));
+            }
+
             if (d.allBelowNoise) {
                 host.appendChild(el('p', 'note',
-                    'Every panel count measures the same as none of them: in ' +
-                    'this scene, on this backend, the panels are not what the ' +
-                    'frame is spending its time on. Look at the spectral row ' +
-                    'below before looking at the panel budget.'));
+                    d.suggestFrames
+                        ? 'No row separated from the empty scene at ' +
+                          result.frames + ' frames. The differences are there ' +
+                          'but small: about ' + d.suggestFrames + ' frames ' +
+                          'would resolve them. Either raise the count, or read ' +
+                          'this as the panels costing little enough here that ' +
+                          'it takes that long to prove — and look at the ' +
+                          'spectral row first.'
+                        : 'Every panel count measures the same as none of ' +
+                          'them: in this scene, on this backend, the panels ' +
+                          'are not what the frame is spending its time on. ' +
+                          'Look at the spectral row before the panel budget.'));
             }
 
             if (result.spectral && result.rgb) {

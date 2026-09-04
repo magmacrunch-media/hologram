@@ -439,26 +439,43 @@ and neither the milliseconds nor the ratios cross between them. bench's
 figures are shown, under their own heading, as the measurement of a
 different scene on the backend that ships.
 
-### It says when it cannot tell
+### It says when it cannot tell, and what would fix it
 
-A difference smaller than the measurement's own noise comes out negative
-about half the time, and a table reporting that a panel made the frame
-*cheaper* has stopped describing the renderer. So the zero-panel stage's
-interquartile spread is the noise floor, and any row within it reads **below
-noise** rather than printing a number.
+A difference smaller than the measurement's own uncertainty comes out
+negative about half the time, and a table reporting that a panel made the
+frame *cheaper* has stopped describing the renderer. So a row prints a
+number only when the difference clears its own error band.
 
-On m7_room in this browser every row does:
+**Which uncertainty that is turns out to be the whole question, and the
+first version got it wrong.** It compared each difference against the
+*interquartile spread of individual frames* — how much one frame differs
+from the next. That is not the uncertainty of a median. Frame jitter of
+0.5 ms across sixty frames leaves the median good to about 0.08, so the
+panel reported "below noise" for differences it could comfortably have
+resolved, on every backend, always. It now uses the standard error of the
+median and compares a difference against two of them, one per stage.
+
+The payoff is that "cannot tell" becomes a number. The uncertainty falls as
+the square root of the frame count, so the panel works out how many frames
+*would* separate a row, and says so:
 
 ```
-everything that is not a panel: 8.601 ms, noise ±0.290
-  1 panel   8.597   below noise
-  7 panels  8.587   below noise
-whole scene: spectral 8.612 ms, RGB 0.578 ms  (14.91x for twelve wavelengths)
+everything that is not a panel: 8.549 ms, frame jitter ±0.491
+   1 panel    8.593   needs ~885 frames
+   7 panels   8.639   needs ~151 frames
+whole scene: spectral 8.616 ms, RGB 0.569 ms  (15.15x for twelve wavelengths)
 ```
 
-Which is the finding, not a failure: in that room, on that backend, the
-panels are not where the frame goes — the twelve wavelengths are, by nearly
-fifteen to one. The panel says so and points at the spectral row.
+Raise the count, or read it as the panels costing little enough here that it
+takes that long to prove — and either way look at the spectral row, which is
+where the time is actually going, by fifteen to one.
+
+**A resolved negative is drift, not panels.** The stages run one after
+another, so anything changing across a run — clocks ramping, the machine
+warming, another window waking — lands on the later stages and looks exactly
+like a panel-count effect. A panel cannot make a frame cheaper, so a
+negative difference that clears the band is labelled drift, with a note to
+measure again on a settled machine.
 
 ## The oracle panel
 
