@@ -185,6 +185,41 @@ The plan view, and authoring the walk world.
   did whichever panel you did it in, and a wall drag collapses to one
   entry the way a slider drag does.
 
+Clicking things, and source/pick_json.c.
+
+- Left-click picks whatever is under the cursor and drags it;
+  right-drag looks. Pointer lock is gone with them: locking the cursor is
+  right for a game and wrong for an editor, where the cursor is what you
+  point at things with.
+- A drag moves the primitive's origin on a plane through it, horizontal
+  by default and vertical with shift. Which plane needed care: a ray
+  misses the ground plane when the view is level (parallel to it) AND
+  when the view is angled slightly up and the object sits below eye
+  level (the plane is behind the ray). Both fall back to a plane facing
+  the camera, which always has an intersection.
+- Answering what is under a pixel means intersecting the scene, since the
+  tracer returns a colour and not an identity. So editor/core/pick.js is a
+  copy of geometry.c's intersections and cpu_trace.c's nearest_hit, and
+  like every other copy here it is held to the engine: every --dump now
+  writes build/<name>_pick.json, a 64x48 grid of rays through the camera
+  and the primitive the ENGINE found nearest along each. All eight
+  examples agree exactly, 3072 of 3072.
+- The traversal order is copied deliberately. nearest_hit walks spheres,
+  rects, dishes, floor, keeping a hit only on a strict t < best, so an
+  exact tie goes to whichever was tested first -- which is what decides
+  the answer wherever two surfaces touch.
+- The check paid for itself at once. The first rayDish was written from
+  geometry.h's description rather than its source and missed both the z
+  clipping that keeps an ellipsoid's far half and a hyperboloid's second
+  sheet out of the dish, and the fall-through to the far root that
+  happens every time you look into a concave mirror. It put a dish in
+  front of the floor across 6.6% of m8_furnace, and nothing about the
+  rendered image would have shown it.
+- editor/serve.py: the same static server with Cache-Control: no-store.
+  Everything about this page is edit-a-file-and-reload, and a browser
+  holding a stale script that looks current is an afternoon lost to
+  reading code that is already correct.
+
 The game release: whatever Crystal Mirror Maze development asks of the
 engine lands here.
 

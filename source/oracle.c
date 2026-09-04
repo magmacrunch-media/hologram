@@ -6,6 +6,7 @@
 #include "../external/sokol/sokol_app.h"
 #include "display.h"
 #include "oracle.h"
+#include "pick_json.h"
 #include "scene_json.h"
 
 /* On a failed diff, both frames land in build\ as PPMs: when the verdict
@@ -165,12 +166,23 @@ int holo_oracle_dump(const HoloScene *scene, const HoloCamera *cam,
     snprintf(path, sizeof path, "build/%s_scene.json", name);
     int json_ok = holo_scene_write_json(path, scene, cam, spectral);
 
+    /* And which primitive each of a grid of rays lands on, so anything
+       that has to answer "what did I just click on" can be held to the
+       engine rather than trusted. See pick_json.h. */
+    snprintf(path, sizeof path, "build/%s_pick.json", name);
+    int pick_ok = holo_pick_write_json(path, scene, cam);
+
     printf("dumped build/%s_params.bin (%d bytes) and build/%s_ref.bin (%dx%d)\n",
            name, gpu_scene_size, name, w, h);
     if (json_ok) {
         printf("dumped build/%s_scene.json\n", name);
     } else {
         printf("warning: could not write build/%s_scene.json\n", name);
+    }
+    if (pick_ok) {
+        printf("dumped build/%s_pick.json\n", name);
+    } else {
+        printf("warning: could not write build/%s_pick.json\n", name);
     }
     return 1;
 }

@@ -327,6 +327,23 @@
                 history.commitStroke();
                 syncDirty();
             },
+            /* Picking in the view drives the same selection the list shows,
+               so the two never disagree about what is selected. */
+            setSelection: function (s) {
+                sel = s;
+                renderAll();
+            },
+            /* A drag in the view changed a field the inspector is showing.
+               Refresh what has gone stale without rebuilding the inputs. */
+            refreshEdited: function () {
+                renderList();
+                inspector.refreshInert($(ids.selBody));
+                (($(ids.selBody) || {})._rows || []).forEach(function (row) {
+                    if (row.refresh) { row.refresh(); }
+                });
+                renderEmit();
+                syncDirty();
+            },
             undo: function () {
                 history.cancelStroke();
                 if (history.undo()) { syncDirty(); }

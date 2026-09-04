@@ -495,26 +495,10 @@
             }
         });
 
-        canvas.addEventListener('click', function () {
-            if (document.pointerLockElement !== canvas) {
-                canvas.requestPointerLock();
-            }
-        });
-        document.addEventListener('mousemove', function (e) {
-            if (document.pointerLockElement === canvas) {
-                state.cam.look(e.movementX * 0.0025, e.movementY * 0.0025);
-                invalidate();
-            }
-        });
-        document.addEventListener('pointerlockchange', function () {
-            var locked = document.pointerLockElement === canvas;
-            $('lock-hint').textContent = locked
-                ? 'Esc releases the mouse'
-                : 'click the view to look around';
-            if (!locked) {
-                state.held = {};
-            }
-        });
+        /* Looking and picking both want the mouse, so they take a button
+           each -- see ui/drag.js for why pointer lock is gone. */
+        $('lock-hint').textContent =
+            'left-click selects and drags · right-drag looks · shift drags up';
 
         $('spectral').addEventListener('change', function (e) {
             state.spectral = e.target.checked;
@@ -624,6 +608,8 @@
             fetchText(ROOT + '/build/' + state.name + '_walk.json')
                 .then(JSON.parse).catch(function () { return null; }),
             fetchText(ROOT + '/build/walk_selftest.json')
+                .then(JSON.parse).catch(function () { return null; }),
+            fetchText(ROOT + '/build/' + state.name + '_pick.json')
                 .then(JSON.parse).catch(function () { return null; })
         ]).then(function (loaded) {
             var shaderSrc = loaded[0], json = loaded[1], golden = loaded[2];
@@ -666,6 +652,19 @@
 
             state.view.setShader(shaderSrc);
 
+            /* The picker is a copy of the engine's intersections, so it is
+               held to a grid the engine cast through this same camera.
+               Against the pristine scene, for the reason every other check
+               here uses the pristine one. */
+            if (loaded[6]) {
+                var pc = root.pick.conformance(state.pristine, loaded[6]);
+                var el = $('pick-check');
+                el.textContent = 'PICK ' + (pc.ok ? 'OK' : 'FAIL') + ': ' +
+                    pc.agree + '/' + pc.total + ' rays agree with the engine' +
+                    (pc.differ ? ', ' + pc.pct.toFixed(3) + '% differ' : '');
+                el.className = 'note ' + (pc.ok ? 'ok' : 'bad');
+            }
+
             showBudget();
             /* Conformance is judged on the scene AS DUMPED, before any edit:
                it is a check on the packer, not on the scene. Editing changes
@@ -707,6 +706,23 @@
                     if (state.plan) { state.plan.refresh(false); }
                     markWorldEdited();
                 }
+            });
+
+            state.drag = root.drag.create({
+                canvas: 'view',
+                doc: function () { return state.doc; },
+                camera: function () { return state.cam; },
+                aspect: function () { return DESIGN_W / DESIGN_H; },
+                select: function (s) { state.bench.setSelection(s); },
+                beginEdit: function () { state.bench.beginWorldStroke(); },
+                commit: function () { state.bench.commitWorldStroke(); },
+                edited: function () {
+                    state.bench.refreshEdited();
+                    showBudget();
+                    scheduleDraft();
+                    invalidate();
+                },
+                changed: invalidate
             });
 
             state.plan = root.planview.create({

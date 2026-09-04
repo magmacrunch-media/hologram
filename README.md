@@ -331,6 +331,12 @@ one, byte for byte, so the editor opens its own output the way it opens a
 dump. No desktop wrapper: a page can write a file the person chose, and
 keep the handle.
 
+Clicking a primitive in the view selects it and dragging moves it, which
+means intersecting the scene: the tracer returns a colour, not an
+identity. That picker is a copy of the engine's intersections, so --dump
+also writes a grid of rays and what the engine hit along each, and the
+editor is held to it -- 3072 of 3072 on every example.
+
 The walls themselves are editable, from a plan view: the tracer cannot
 draw a collision box, so a room's walls have until now been written as C
 and found by walking into them. Seen from above, with the panels drawn

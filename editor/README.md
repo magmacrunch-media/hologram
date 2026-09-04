@@ -6,11 +6,20 @@ scene while it renders.
 ```
 build.bat
 build\m7_room.exe --dump
-python -m http.server 8731 --bind 127.0.0.1
+python editor/serve.py
 ```
 
-Then <http://127.0.0.1:8731/editor/?s=m7_room>. Serve the **repository root**,
-not this directory — the page reads the engine's files one level up.
+Then <http://127.0.0.1:8731/editor/?s=m7_room>.
+
+`python -m http.server 8731 --bind 127.0.0.1` from the repository root works
+too — but it lets the browser cache, and everything here is edit-a-file-and-
+reload: the tracer, these scripts, a scene you just re-dumped. A stale script
+that looks current costs an afternoon; you read the code, the code is right,
+and the page is running the version from ten minutes ago. `serve.py` is the
+same server with `Cache-Control: no-store`, bound to loopback.
+
+Either way, serve the **repository root**, not this directory — the page
+reads the engine's files one level up.
 
 `?s=` names any example that takes `--diff`: `m2_gpu`, `m3_mirrors`,
 `m4_glass`, `m5_spectral`, `m6_polarization`, `m7_room`, `m8_furnace`,
@@ -157,6 +166,60 @@ value and do change the text — `printf` pads an exponent to two digits
 (`e-08`, where JavaScript writes `e-8`), and prints negative zero with its
 sign, where `String(-0)` is `"0"`. Matching both is what lets a saved scene
 be diffed against the dump it came from and show only the edits.
+
+## Clicking things
+
+Left-click picks whatever is under the cursor and selects it; drag to move
+it. Right-drag looks around. That split is why pointer lock is gone —
+locking the cursor is right for a game and wrong for an editor, where the
+cursor is the thing you point at objects with.
+
+A drag moves the primitive's origin: a sphere's centre, a dish's apex, a
+rect's corner. Moving a rect by its corner carries the whole panel, because
+its edges are relative to it. Horizontal by default, `shift` for vertical.
+
+The drag happens on a plane through the object, and which plane needs one
+piece of care that is easy to get wrong twice. The ground plane is the one
+you want — rooms are laid out on a floor — but a ray misses it two ways: a
+level view runs parallel to it, and a view angled slightly up puts it
+*behind* the ray whenever the object sits below eye level, which is most
+objects in most rooms. Both show up as no intersection, so both fall back to
+a plane facing the camera, which always has one.
+
+### Picking is a copy of the engine, and it is checked
+
+Answering "what is under this pixel" means intersecting the scene, and the
+tracer returns a colour rather than an identity — so `core/pick.js` is a copy
+of `geometry.c`'s intersections and `cpu_trace.c`'s `nearest_hit`. That is
+the fourth copy of engine code in this directory, and like the others it is
+held to the engine rather than trusted.
+
+Every `--dump` now writes `build/<name>_pick.json`: a 64×48 grid of rays
+through the camera and, for each, the primitive **the engine** found nearest.
+The editor casts the same grid through its own code and compares.
+
+```
+PICK OK: 3072/3072 rays agree with the engine
+```
+
+All eight examples agree exactly — not merely within a tolerance. The bar is
+nonetheless a small share of the grid rather than zero, for the same reason
+the oracle allows outliers: two implementations can legitimately land on
+opposite sides of an edge where surfaces meet at a grazing angle.
+
+The traversal order is load-bearing and copied deliberately. `cpu_trace.c`
+walks spheres, then rects, then dishes, then the floor, keeping a hit only on
+a strict `t < best` — so an exact tie goes to whichever was tested first.
+Where two surfaces touch, that decides the answer, and a picker walking them
+in a different order disagrees along every shared edge in the room.
+
+The check earned itself immediately: the first `rayDish` here was written
+from the header's description rather than the source, and it missed both the
+`z` clipping that keeps an ellipsoid's far half and a hyperboloid's second
+sheet out of the dish, and the fall-through to the far root that happens
+every time you look into a concave mirror. It reported a dish in front of the
+floor across 6.6% of `m8_furnace`. Nothing about the rendered image would
+have shown it.
 
 ## The plan, and authoring walls
 
@@ -470,6 +533,7 @@ core/     pure: no DOM, no WebGL
   sweep.js      the probe, and what a sweep measures
   collision.js  holo_walk_step, and the trace that checks it
   timestep.js   the fixed-step accumulator
+  pick.js       the intersections, and the grid that checks them
 ui/
   view.js       WebGL2: compile, upload, draw, read back
   camera.js     free flight
@@ -478,8 +542,10 @@ ui/
   oraclepanel.js  GPU, CPU, difference
   sweeppanel.js   the probe overlay, the sweep, the plot
   planview.js   the room from above, and wall authoring
+  drag.js       clicking and dragging in the rendered view
   files.js      save, save as, open, and the download fallback
   main.js       loading, the frame loop, input
+serve.py        the same static server, with caching off
 vendor/
   history.js    magma-kit's undo stack, copied — see PROVENANCE.md
 roundtrip.c     proves emit.js round-trips through the compiler
@@ -495,11 +561,6 @@ works in the precision the GPU will, and rounding only at the end gives a
 different answer from rounding at every step.
 
 ## Not here yet
-
-**No dragging in the view.** Placement is numeric. A gizmo needs the tracer
-to say which primitive a pixel belongs to, which the tracer does not report
-today — an object-id pass would be a real change to the shader, not an
-editor feature.
 
 **No diff of an edited scene.** See the oracle panel above: the CPU reference
 belongs to the dumped scene, and making another needs `cpu_trace.c`, which is

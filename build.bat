@@ -15,7 +15,7 @@ if not exist build mkdir build
 
 rem The pure modules: no sokol, no window, safe to link into tests and
 rem console tools alike.
-set PURE=source\linalg.c source\polar.c source\geometry.c source\camera.c source\collision.c source\cpu_trace.c source\gpu_scene.c source\scene_json.c source\spectrum.c source\walk_json.c source\timestep.c
+set PURE=source\linalg.c source\polar.c source\geometry.c source\camera.c source\collision.c source\cpu_trace.c source\gpu_scene.c source\pick_json.c source\scene_json.c source\spectrum.c source\walk_json.c source\timestep.c
 
 if "%1"=="test" goto :tests
 

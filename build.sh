@@ -17,7 +17,7 @@ UNAME=$(uname -s)
 # on any platform before a single graphics call is ported.
 PURE="source/linalg.c source/polar.c source/geometry.c source/camera.c \
 source/collision.c source/cpu_trace.c source/gpu_scene.c \
-source/scene_json.c source/spectrum.c source/timestep.c \
+source/pick_json.c source/scene_json.c source/spectrum.c source/timestep.c \
 source/walk_json.c"
 
 # -Wall -Wextra is the rule in AGENTS.md; it applies to hologram's own code.
