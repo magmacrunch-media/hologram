@@ -43,7 +43,9 @@
  *     the ratio   6.79x .. 10.04x
  *
  * -- so the full room is the reliable figure and the multiple is the one
- * that moves. Budget a scene in milliseconds; read the ratio as the shape
+ * that moves. The table carries each stage's interquartile spread for that
+ * reason, and says so in a NOTE when the baseline's own spread is wide
+ * enough to make the ratio column soft. Budget a scene in milliseconds; read the ratio as the shape
  * of the cost, which is what it is good for, and not as a number to hold
  * a regression to. Comparing two shaders is fine either way, since the
  * baseline moves for both of them.
@@ -93,6 +95,10 @@ static int want_json;   /* also write build/bench.json */
 static int stage_rects[MAX_STAGES];
 static int stage_count;
 static double stage_ms[MAX_STAGES];
+/* The middle half of each stage's samples. A median alone cannot say
+   whether it is worth four digits, and at a fifth of a millisecond it
+   often is not -- see the header. */
+static double stage_iqr[MAX_STAGES];
 static int stage;
 
 static int want_frames = 300;
@@ -267,8 +273,9 @@ static void write_json(void) {
     fprintf(f, "  \"spectral\": 1,\n  \"frames\": %d,\n", want_frames);
     fputs("  \"stages\": [\n", f);
     for (int i = 0; i < stage_count; i++) {
-        fprintf(f, "    { \"panels\": %d, \"ms\": %.6f, \"vs1\": %.6f }%s\n",
-                stage_rects[i], stage_ms[i], stage_ms[i] / stage_ms[0],
+        fprintf(f, "    { \"panels\": %d, \"ms\": %.6f, \"iqr\": %.6f, \"vs1\": %.6f }%s\n",
+                stage_rects[i], stage_ms[i], stage_iqr[i],
+                stage_ms[i] / stage_ms[0],
                 i + 1 < stage_count ? "," : "");
     }
     fputs("  ]\n}\n", f);
@@ -283,11 +290,25 @@ static void report(void) {
            timing_is_gpu ? "GPU timestamps"
                          : "frame clock (includes CPU and present)",
            want_frames);
-    printf("  panels   ms/frame        fps     vs 1 panel\n");
+    printf("  panels   ms/frame        iqr        fps     vs 1 panel\n");
     for (int i = 0; i < stage_count; i++) {
-        printf("  %6d   %8.3f   %8.1f   %8.2fx\n",
-               stage_rects[i], stage_ms[i], 1000.0 / stage_ms[i],
-               stage_ms[i] / stage_ms[0]);
+        printf("  %6d   %8.3f   %8.3f   %8.1f   %8.2fx\n",
+               stage_rects[i], stage_ms[i], stage_iqr[i],
+               1000.0 / stage_ms[i], stage_ms[i] / stage_ms[0]);
+    }
+
+    /* The vs-1 column divides by stage 0, so stage 0's own steadiness
+       decides whether that column means anything. When the baseline is
+       soft the run says so, rather than leaving it to whoever remembers
+       the header. A twentieth is about where the ratio starts moving by
+       more than it is worth reading. */
+    if (stage_count > 1 && stage_ms[0] > 0.0 &&
+        stage_iqr[0] / stage_ms[0] > 0.05) {
+        printf("\n  NOTE: the 1-panel baseline is spread %.1f%% of its own\n"
+               "  median, so the vs-1-panel column is softer than it looks.\n"
+               "  Budget in milliseconds; read the ratio as a shape. A shader\n"
+               "  A/B is unaffected -- the baseline moves for both.\n",
+               100.0 * stage_iqr[0] / stage_ms[0]);
     }
     if (want_json) {
         write_json();
@@ -314,6 +335,9 @@ static void after_frame(void) {
 
     qsort(samples, (size_t)nsamples, sizeof samples[0], cmp_double);
     stage_ms[stage] = samples[nsamples / 2];
+    /* Quartile to quartile: a spread a couple of stray frames cannot
+       inflate the way a min-to-max range can. */
+    stage_iqr[stage] = samples[(nsamples * 3) / 4] - samples[nsamples / 4];
     stage++;
     if (stage >= stage_count) {
         report();
