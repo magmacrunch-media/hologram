@@ -331,6 +331,13 @@ one, byte for byte, so the editor opens its own output the way it opens a
 dump. No desktop wrapper: a page can write a file the person chose, and
 keep the handle.
 
+It can also time what it draws -- GPU timestamps where the browser offers
+them -- and reports what a room spends its frame on: the cost of everything
+that is not a panel, what the panels add on top, and spectral against RGB.
+That is a different question from `tools/bench`'s, which prices panels on
+the backend a game ships; bench gained `--json` so its figures can sit
+beside the editor's under their own heading, never mixed with them.
+
 Clicking a primitive in the view selects it and dragging moves it, which
 means intersecting the scene: the tracer returns a colour, not an
 identity. That picker is a copy of the engine's intersections, so --dump

@@ -58,6 +58,21 @@
 static HoloGpuScene gpu;
 static HoloScene scene;
 static char shader_src[262144];
+static int want_json;   /* also write build/bench.json */
+
+/* What a reader of the JSON needs in order not to compare a D3D11
+   number with a WebGL2 one and think it has learned something. */
+#if defined(SOKOL_D3D11)
+    #define HOLO_BENCH_BACKEND "d3d11"
+#elif defined(SOKOL_GLCORE)
+    #define HOLO_BENCH_BACKEND "glcore"
+#elif defined(SOKOL_METAL)
+    #define HOLO_BENCH_BACKEND "metal"
+#elif defined(SOKOL_GLES3)
+    #define HOLO_BENCH_BACKEND "gles3"
+#else
+    #define HOLO_BENCH_BACKEND "unknown"
+#endif
 
 static int stage_rects[MAX_STAGES];
 static int stage_count;
@@ -208,6 +223,43 @@ static void before_frame(void) {
     clock_begin();
 }
 
+/* The same table as data, for anything that wants to show these numbers
+   beside its own. The editor does: it can time the tracer in WebGL2 but
+   not on the backend a game ships, so it reads this to put the real
+   figures next to its own and label which is which.
+
+   `timing` is the field that matters most in it. A frame-clock number
+   and a GPU-timestamp number are not the same measurement, and a reader
+   that presents them as one is doing the thing this tool's header warns
+   about at length. */
+static void write_json(void) {
+    FILE *f = fopen("build/bench.json", "wb");
+    if (!f) {
+        printf("\n  could not write build/bench.json\n");
+        return;
+    }
+    fputs("{\n", f);
+    fprintf(f, "  \"format\": \"hologram/bench/1\",\n");
+    fprintf(f, "  \"shader\": \"%s\",\n", shader_path);
+    fprintf(f, "  \"backend\": \"%s\",\n", HOLO_BENCH_BACKEND);
+    fprintf(f, "  \"timing\": \"%s\",\n",
+            timing_is_gpu ? "gpu timestamps"
+                          : "frame clock (includes CPU and present)");
+    fprintf(f, "  \"gpu_clock\": %d,\n", timing_is_gpu ? 1 : 0);
+    fprintf(f, "  \"width\": %d,\n  \"height\": %d,\n",
+            sapp_width(), sapp_height());
+    fprintf(f, "  \"spectral\": 1,\n  \"frames\": %d,\n", want_frames);
+    fputs("  \"stages\": [\n", f);
+    for (int i = 0; i < stage_count; i++) {
+        fprintf(f, "    { \"panels\": %d, \"ms\": %.6f, \"vs1\": %.6f }%s\n",
+                stage_rects[i], stage_ms[i], stage_ms[i] / stage_ms[0],
+                i + 1 < stage_count ? "," : "");
+    }
+    fputs("  ]\n}\n", f);
+    fclose(f);
+    printf("\n  wrote build/bench.json\n");
+}
+
 static void report(void) {
     printf("\n  shader: %s\n", shader_path);
     printf("  %dx%d, spectral, %s, median of %d frames\n\n",
@@ -220,6 +272,9 @@ static void report(void) {
         printf("  %6d   %8.3f   %8.1f   %8.2fx\n",
                stage_rects[i], stage_ms[i], 1000.0 / stage_ms[i],
                stage_ms[i] / stage_ms[0]);
+    }
+    if (want_json) {
+        write_json();
     }
     if (!timing_is_gpu) {
         printf("\n  NOTE: no GPU clock on this backend -- these are frame\n"
@@ -265,9 +320,11 @@ sapp_desc sokol_main(int argc, char *argv[]) {
             one_rects = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
             want_frames = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--json") == 0) {
+            want_json = 1;
         } else {
             printf("bench: usage: bench [--rects N] [--shader PATH] "
-                   "[--frames N]\n");
+                   "[--frames N] [--json]\n");
             exit(2);
         }
     }

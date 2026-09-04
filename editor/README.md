@@ -35,7 +35,8 @@ reads the engine's files one level up.
 | `F` | look at the selected primitive |
 | `P` | spectral on/off |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | undo / redo |
-| click the view | mouse look; `Esc` releases |
+| left-click / drag | select a primitive, drag to move it (`shift` for vertical) |
+| right-drag | look around |
 
 ## What it is
 
@@ -400,6 +401,65 @@ that shares no code with the test.
 A sweep restores the value it moved, so the scene is exactly as you left it.
 CSV goes to the clipboard.
 
+## What it costs
+
+**measure this scene** times the tracer on its own offscreen surface and
+reports what the room is spending its frame on.
+
+It is not `tools/bench` and does not try to be. bench answers *what does a
+panel cost on the backend you ship*, which a page cannot: WebGL2 is a
+different driver and a different shader compiler. What the editor can do,
+and bench cannot, is measure **this** room — the one you are editing, with
+the panels you actually put in it — and tell you what an edit just did to it.
+
+Timing is GPU timestamps via `EXT_disjoint_timer_query_webgl2`, and where
+that is missing the panel says so and reports draw-plus-readback times under
+a different name. `tools/bench`'s header is worth reading on why that
+distinction is not pedantry: wall-clock frame time measures the loop rather
+than the shader, and bench once reported 0.104 ms for work taking 0.64 ms
+before it started using timestamps. Frames are issued back to back and only
+collected afterwards, because polling for each result before the next draw
+puts a stall between every frame and measures a different workload.
+
+### The ladder starts at zero, and that is the point
+
+The first row is the scene with **no panels at all** — the cost of the
+spheres, dishes, floor, sky and the twelve wavelengths. Every row above it
+reports what the panels add on top, which is the number an edit moves.
+
+That decomposition replaced a comparison that looked reasonable and was
+wrong. The obvious thing is to put bench's "vs 1 panel" ratio beside the
+editor's, on the grounds that a ratio should survive a change of backend
+where milliseconds do not. Measuring it showed why it does not: **bench
+builds a synthetic scene of N panels and nothing else**, so its baseline is
+one panel alone, while this ladder truncates a real room's rects and keeps
+everything else. In m7_room that fixed cost swamps the panels, so the
+editor's curve is flat where bench's climbs 9.44× — two different questions,
+and neither the milliseconds nor the ratios cross between them. bench's
+figures are shown, under their own heading, as the measurement of a
+different scene on the backend that ships.
+
+### It says when it cannot tell
+
+A difference smaller than the measurement's own noise comes out negative
+about half the time, and a table reporting that a panel made the frame
+*cheaper* has stopped describing the renderer. So the zero-panel stage's
+interquartile spread is the noise floor, and any row within it reads **below
+noise** rather than printing a number.
+
+On m7_room in this browser every row does:
+
+```
+everything that is not a panel: 8.601 ms, noise ±0.290
+  1 panel   8.597   below noise
+  7 panels  8.587   below noise
+whole scene: spectral 8.612 ms, RGB 0.578 ms  (14.91x for twelve wavelengths)
+```
+
+Which is the finding, not a failure: in that room, on that backend, the
+panels are not where the frame goes — the twelve wavelengths are, by nearly
+fifteen to one. The panel says so and points at the spectral row.
+
 ## The oracle panel
 
 **oracle** renders the tracer at the reference's resolution, compares it to
@@ -534,6 +594,7 @@ core/     pure: no DOM, no WebGL
   collision.js  holo_walk_step, and the trace that checks it
   timestep.js   the fixed-step accumulator
   pick.js       the intersections, and the grid that checks them
+  cost.js       what a scene costs, and what may be said about it
 ui/
   view.js       WebGL2: compile, upload, draw, read back
   camera.js     free flight
@@ -543,6 +604,7 @@ ui/
   sweeppanel.js   the probe overlay, the sweep, the plot
   planview.js   the room from above, and wall authoring
   drag.js       clicking and dragging in the rendered view
+  costpanel.js  timing the tracer, on its own surface
   files.js      save, save as, open, and the download fallback
   main.js       loading, the frame loop, input
 serve.py        the same static server, with caching off
@@ -566,9 +628,11 @@ different answer from rounding at every step.
 belongs to the dumped scene, and making another needs `cpu_trace.c`, which is
 C and is staying C.
 
-**No bench.** `tools/bench` prices a scene by panel count and is exactly what
-you want beside a budget meter, but it times the GPU from a native process.
-Running it needs somewhere to spawn one, which a page does not have.
+**No `tools/bench` itself.** The cost panel measures *this* scene in WebGL2;
+bench measures a synthetic one on the backend that ships, and running it
+needs a native process a page has nowhere to spawn. `build\bench.exe --json`
+writes `build/bench.json` and the panel shows it alongside, under its own
+heading.
 
 **A sweep in a background tab crawls.** The loop yields with `setTimeout` so
 the progress line paints, and a hidden tab throttles those to about one a

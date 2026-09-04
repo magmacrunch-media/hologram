@@ -517,6 +517,20 @@
         $('plan-fit').addEventListener('click', function () {
             state.plan.fit();
         });
+        $('cost-run').addEventListener('click', function () {
+            var btn = $('cost-run'), st = $('cost-status');
+            btn.disabled = true;
+            st.textContent = 'measuring…';
+            var frames = parseInt($('cost-frames').value, 10);
+            state.benchPanel.run(st, frames > 0 ? frames : 40).then(function () {
+                st.textContent = '';
+                btn.disabled = false;
+            }).catch(function (e) {
+                st.textContent = 'failed: ' + (e && e.message ? e.message : e);
+                st.className = 'note bad';
+                btn.disabled = false;
+            });
+        });
         $('save-walls').addEventListener('click', function () {
             if (!state.walkDoc) { return; }
             var body = root.save.walkToJson(state.walkDoc.world,
@@ -560,6 +574,7 @@
                    drop both so the next run picks up what was just loaded. */
                 if (state.oracle) { state.oracle.reset(); }
                 if (state.sweep) { state.sweep.reset(); }
+                if (state.benchPanel) { state.benchPanel.reset(); }
             }).catch(function (e) { fail('shader reload', e); });
         });
 
@@ -610,12 +625,17 @@
             fetchText(ROOT + '/build/walk_selftest.json')
                 .then(JSON.parse).catch(function () { return null; }),
             fetchText(ROOT + '/build/' + state.name + '_pick.json')
+                .then(JSON.parse).catch(function () { return null; }),
+            /* Optional and scene-independent: whatever tools/bench last
+               measured on this machine, if it was asked to write it down. */
+            fetchText(ROOT + '/build/bench.json')
                 .then(JSON.parse).catch(function () { return null; })
         ]).then(function (loaded) {
             var shaderSrc = loaded[0], json = loaded[1], golden = loaded[2];
 
             state.shaderSource = shaderSrc;
             state.ref = loaded[3];
+            state.benchDoc = loaded[7];
             /* Parsed twice, deliberately: the bench edits `doc` in place, and
                the oracle panel needs the scene the CPU reference was rendered
                from. One parse shared between them would let an edit quietly
@@ -744,6 +764,19 @@
             });
             $('plan-section').hidden = !state.walkDoc;
             state.plan.refresh(true);
+
+            state.benchPanel = root.costpanel.create({
+                host: 'cost',
+                doc: function () { return state.doc; },
+                camera: function () { return state.cam; },
+                shaderSource: function () { return state.shaderSource; },
+                width: function () { return DESIGN_W; },
+                height: function () { return DESIGN_H; },
+                /* tools/bench's own numbers, when they have been produced.
+                   The panel shows them beside its own and says which is
+                   which; it never mixes them. */
+                benchDoc: function () { return state.benchDoc; }
+            });
 
             state.files = root.files.create({
                 doc: function () { return state.doc; },

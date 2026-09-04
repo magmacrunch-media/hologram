@@ -220,6 +220,40 @@ Clicking things, and source/pick_json.c.
   holding a stale script that looks current is an afternoon lost to
   reading code that is already correct.
 
+A cost panel, and tools/bench --json.
+
+- bench gains --json, writing build/bench.json: the same table it prints,
+  plus the backend and which clock produced it. A reader that mistakes a
+  frame-clock number for a GPU-timestamp one is doing the thing bench's
+  header warns about at length, so the file says which it is.
+- The editor times the tracer on its own surface, with GPU timestamps
+  through EXT_disjoint_timer_query_webgl2 where the browser has it and a
+  differently-named fallback where it does not. Frames are issued back to
+  back and collected afterwards: polling each result before the next draw
+  stalls between frames and measures a different workload.
+- It is not bench and does not claim to be. bench asks what a panel costs
+  on the backend a game ships; this asks what THIS room costs, which bench
+  cannot, and answers it in WebGL2, which is not that backend.
+- The obvious comparison turned out to be wrong, and measuring it is what
+  showed that. Putting bench's "vs 1 panel" ratio beside the editor's
+  looks defensible -- a ratio should survive a change of backend where
+  milliseconds do not -- but bench builds a synthetic scene of N panels
+  and nothing else, while the editor truncates a real room's rects and
+  keeps everything else. In m7_room the fixed cost swamps the panels, so
+  the editor's curve is flat where bench's climbs 9.44x. Different
+  questions; neither the milliseconds nor the ratios cross between them,
+  and bench's figures now sit under their own heading saying so.
+- So the ladder starts at zero panels -- the cost of everything that is
+  not a panel -- and every row above reports what the panels add, which is
+  the number an edit moves.
+- And it says when it cannot tell. A difference below the measurement's
+  own noise comes out negative about half the time, and a table reporting
+  that a panel made the frame cheaper has stopped describing the
+  renderer; rows inside the zero stage's interquartile spread read "below
+  noise" instead. On m7_room in WebKit's WebGL every row does, and the
+  panel says so and points at the spectral row: 8.61 ms spectral against
+  0.58 ms in RGB, nearly fifteen to one for the twelve wavelengths.
+
 The game release: whatever Crystal Mirror Maze development asks of the
 engine lands here.
 
