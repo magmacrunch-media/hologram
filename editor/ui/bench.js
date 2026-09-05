@@ -234,6 +234,32 @@
             }
             tools.appendChild(dup);
 
+            /* "Put it on the floor" means something different per primitive:
+               a sphere rests on its radius, a rect and a dish on their
+               origin. Doing it by hand means knowing which, and getting a
+               sphere half-sunk when you forget. */
+            var floorY = (doc.floor && doc.floor.floor_y) || 0;
+            var drop = el('button', null, 'on the floor');
+            drop.title = 'rest this on floor_y (' + floorY + ')';
+            drop.addEventListener('click', function () {
+                history.push();
+                if (spec.kind === 'sphere') {
+                    obj.center[1] = floorY + (obj.radius || 0);
+                } else if (spec.kind === 'dish') {
+                    obj.apex[1] = floorY;
+                } else {
+                    /* A panel hangs from its corner, and its edges may run
+                       either way -- drop whichever end is lower. */
+                    var low = Math.min(0, obj.edge_u[1], obj.edge_v[1],
+                                       obj.edge_u[1] + obj.edge_v[1]);
+                    obj.corner[1] += floorY - (obj.corner[1] + low);
+                }
+                renderAll();
+                opts.changed();
+                syncDirty();
+            });
+            tools.appendChild(drop);
+
             inspector.fields(body, obj, spec.fields);
         }
 

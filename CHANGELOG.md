@@ -293,6 +293,27 @@ The editor can open a game's rooms, not just the examples.
 - Mounted paths are resolved and confined to their mount; the engine holds
   no list of the games that consume it.
 
+Editing heights, and more than one wall at a time.
+
+- The plan view selects a set rather than a single wall: ctrl-click or
+  shift-click adds, a drag moves all of them, and corner handles stay on
+  the last one picked because two boxes do not share a corner.
+- A height panel for the selection -- base and top as numbers, and on the
+  floor / full / curb as presets -- because height is the axis a plan
+  cannot draw and the one a room is most often adjusted along. A run of
+  walls shares a top; doing that one field at a time across twenty-four is
+  how a mistake gets in.
+- Setting the base MOVES a wall rather than stretching it: putting
+  something on the floor should not also make it taller.
+- Where a multiple selection disagrees the field is blank with a mixed
+  placeholder rather than showing the first wall's number as though it
+  spoke for all of them. Typing into it sets them all, and the whole set is
+  one undo entry.
+- Scene primitives gain on-the-floor as well, which means something
+  different for each: a sphere rests on its radius, a dish on its apex, a
+  panel on whichever corner is lowest. That is the arithmetic that leaves a
+  sphere half-sunk when it is done by hand.
+
 The game release: whatever Crystal Mirror Maze development asks of the
 engine lands here.
 

@@ -88,6 +88,13 @@ canvas {
   font-size: 10px; color: var(--dim); text-transform: none;
   letter-spacing: 0; font-weight: 400;
 }
+.heights { margin-bottom: 8px; }
+.heights .srow button { padding: 1px 6px; font-size: 11px; }
+.heights .flabel { flex: 0 0 3.2em; margin: 0; }
+.heights .fnum { flex: 0 0 6em; }
+.heights .note { margin: 4px 0 0; }
+.lrow.primary .lidx { font-weight: 700; }
+
 .subhead {
   font-size: 11px; margin: 10px 0 4px; color: var(--dim);
   letter-spacing: .08em; text-transform: uppercase;

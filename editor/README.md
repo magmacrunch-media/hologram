@@ -282,6 +282,34 @@ Height is the part a plan cannot show, so the list says it instead: a row
 reads `2 x 0.1 wall`, or `curb 0.4 high`, or `overhang at 1.65`, and
 anything you cannot simply walk into is drawn dashed and paler.
 
+### Editing heights, and several walls at once
+
+Height is also the axis a room is most often adjusted along — a run of walls
+shares a top, a doorway is a gap with a lintel over it, a curb is a wall that
+stops at the knee — and doing that one inspector field at a time across
+twenty-four walls is how a mistake gets in.
+
+**Ctrl-click or shift-click** adds a wall to the selection. A drag then moves
+all of them; corner handles stay on the last one picked, because two boxes do
+not share a corner and a field of grab squares says nothing about which one a
+drag would resize.
+
+The selection gets a height panel: **base** and **top** as numbers, and
+**on the floor**, **full**, **curb** as one-click presets. Setting the base
+*moves* a wall rather than stretching it — "put this on the floor" should not
+also make it taller. Nudge buttons shift by a centimetre or ten.
+
+Where a multiple selection disagrees about a value the field is **blank with
+a `mixed` placeholder** rather than showing the first wall's number as though
+it spoke for all of them; typing into it sets them all, which is the point.
+The whole set is one undo entry.
+
+Scene primitives get **on the floor** too, next to *look at* and *duplicate*.
+It means something different per primitive — a sphere rests on its radius, a
+dish on its apex, a panel on whichever of its corners is lowest — which is
+exactly the arithmetic it is easy to get wrong by hand and end up with a
+sphere half-sunk in the floor.
+
 `show C` emits the world as a `HoloWalkWorld` block beside the scene, which
 is how it gets into a game. `save walls` writes `hologram/walk/1` — the
 format `walk_json.c` writes, minus the trace, because a trace is a record of

@@ -36,9 +36,23 @@
         var canvas = document.getElementById(opts.canvas);
         var ctx = canvas.getContext('2d');
         var view = { cx: 0, cz: 0, scale: 30 };   /* world centre, px per m */
-        var sel = -1;
+        /* Indices, not an index. Height is the thing you most often want to
+           change for several walls at once -- a run of them is a corridor
+           and shares a top -- and doing that one inspector field at a time
+           across a room of 24 is how a mistake gets in. The LAST entry is
+           the primary: the one whose corners get handles and whose fields
+           the inspector shows. */
+        var sel = [];
         var drag = null;
         var fitted = false;
+
+        function isSel(i) { return sel.indexOf(i) >= 0; }
+        function primary() { return sel.length ? sel[sel.length - 1] : -1; }
+        function selectedWalls() {
+            var list = walls();
+            return sel.map(function (i) { return list[i]; })
+                      .filter(function (w) { return !!w; });
+        }
 
         var inspector = root.inspector.create({
             beginEdit: function () { opts.beginEdit(); },
@@ -176,20 +190,23 @@
                 var z = sz(Math.min(b.min[2], b.max[2]));
                 var ww = Math.abs(b.max[0] - b.min[0]) * view.scale;
                 var hh = Math.abs(b.max[2] - b.min[2]) * view.scale;
-                var isSel = i === sel;
+                var on = isSel(i);
                 var low = b.max[1] - b.min[1] < w.height * 0.6 || b.min[1] > 0.01;
 
                 ctx.fillStyle = ink;
-                ctx.globalAlpha = isSel ? 0.32 : (low ? 0.12 : 0.20);
+                ctx.globalAlpha = on ? 0.32 : (low ? 0.12 : 0.20);
                 ctx.fillRect(x, z, Math.max(1, ww), Math.max(1, hh));
                 ctx.globalAlpha = 1;
                 ctx.strokeStyle = ink;
-                ctx.lineWidth = isSel ? 2.5 : 1;
+                ctx.lineWidth = on ? 2.5 : 1;
                 ctx.setLineDash(low ? [5, 3] : []);
                 ctx.strokeRect(x, z, Math.max(1, ww), Math.max(1, hh));
                 ctx.setLineDash([]);
 
-                if (isSel) {
+                /* Handles on the primary only: four grab squares on every
+                   wall of a large selection is a field of dots with nothing
+                   to say about which one a drag would resize. */
+                if (i === primary()) {
                     ctx.fillStyle = ink;
                     [[x, z], [x + ww, z], [x, z + hh], [x + ww, z + hh]]
                         .forEach(function (p) {
@@ -226,8 +243,9 @@
         /* ---- hit testing ---------------------------------------------- */
 
         function cornerAt(px, pz) {
-            if (sel < 0) { return null; }
-            var b = walls()[sel];
+            var pi = primary();
+            if (pi < 0) { return null; }
+            var b = walls()[pi];
             if (!b) { return null; }
             var xs = [b.min[0], b.max[0]], zs = [b.min[2], b.max[2]];
             for (var i = 0; i < 2; i++) {
@@ -278,13 +296,21 @@
             }
             var hit = wallAt(p[0], p[1]);
             if (hit >= 0) {
-                if (hit !== sel) { select(hit); }
+                /* Ctrl or shift extends. Clicking a wall that is
+                   already in the selection keeps the whole set, so a
+                   drag moves everything picked rather than collapsing
+                   to the one under the cursor. */
+                if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                    toggle(hit);
+                } else if (!isSel(hit)) {
+                    select(hit);
+                }
                 opts.beginEdit();
                 drag = { kind: 'move', x: wx(p[0]), z: wz(p[1]) };
                 return;
             }
             /* Empty space: pan, and drop the selection. */
-            if (sel !== -1) { select(-1); }
+            if (sel.length) { select(-1); }
             drag = { kind: 'pan', x: p[0], z: p[1] };
         });
 
@@ -302,12 +328,17 @@
                 render();
                 return;
             }
-            var b = walls()[sel];
+            var b = walls()[primary()];
             if (!b) { return; }
             if (drag.kind === 'move') {
+                /* Every selected wall moves by the same delta; a
+                   corner drag edits only the primary, because two
+                   boxes do not share a corner. */
                 var dx = wx(p[0]) - drag.x, dz = wz(p[1]) - drag.z;
-                b.min[0] += dx; b.max[0] += dx;
-                b.min[2] += dz; b.max[2] += dz;
+                selectedWalls().forEach(function (s) {
+                    s.min[0] += dx; s.max[0] += dx;
+                    s.min[2] += dz; s.max[2] += dz;
+                });
                 drag.x = wx(p[0]); drag.z = wz(p[1]);
             } else {
                 /* A corner drag edits the two coordinates it owns, and is
@@ -355,11 +386,21 @@
         /* ---- list and inspector --------------------------------------- */
 
         function select(i) {
-            sel = i;
+            sel = i >= 0 ? [i] : [];
+            afterSelect();
+        }
+
+        function toggle(i) {
+            var at = sel.indexOf(i);
+            if (at >= 0) { sel.splice(at, 1); } else { sel.push(i); }
+            afterSelect();
+        }
+
+        function afterSelect() {
             renderList();
             renderInspector();
             render();
-            if (opts.selected) { opts.selected(i); }
+            if (opts.selected) { opts.selected(primary()); }
         }
 
         function renderList() {
@@ -397,7 +438,8 @@
             host.appendChild(head);
 
             list.forEach(function (b, i) {
-                var row = el('div', 'lrow' + (i === sel ? ' sel' : ''));
+                var row = el('div', 'lrow' + (isSel(i) ? ' sel' : '') +
+                             (i === primary() ? ' primary' : ''));
                 row.appendChild(el('span', 'lidx', String(i)));
                 row.appendChild(el('span', 'ldesc',
                                    root.schema.describeWall(b, w)));
@@ -408,12 +450,19 @@
                     opts.beginEdit();
                     list.splice(i, 1);
                     opts.commit();
-                    if (sel >= list.length) { sel = list.length - 1; }
-                    select(sel);
+                    sel = sel.filter(function (k) { return k < list.length; });
+                    refresh(false);
+                    if (opts.selected) { opts.selected(primary()); }
                     opts.changed();
                 });
                 row.appendChild(del);
-                row.addEventListener('click', function () { select(i); });
+                row.addEventListener('click', function (ev) {
+                    if (ev.ctrlKey || ev.metaKey || ev.shiftKey) {
+                        toggle(i);
+                    } else {
+                        select(i);
+                    }
+                });
                 host.appendChild(row);
             });
         }
@@ -422,7 +471,9 @@
             var body = document.getElementById(opts.body);
             var w = world();
             if (!w) { body.innerHTML = ''; return; }
-            if (sel < 0 || !walls()[sel]) {
+
+            var chosen = selectedWalls();
+            if (!chosen.length) {
                 /* Nothing selected: the world's own fields, which are as
                    much a part of authoring as the boxes are. */
                 body.innerHTML = '';
@@ -432,11 +483,133 @@
                 inspector.fields(into, w, root.schema.WALK_WORLD);
                 return;
             }
+
             body.innerHTML = '';
-            body.appendChild(el('h3', 'subhead', 'wall ' + sel));
-            var box = el('div');
-            body.appendChild(box);
-            inspector.fields(box, walls()[sel], root.schema.WALL);
+            body.appendChild(el('h3', 'subhead',
+                chosen.length === 1 ? 'wall ' + primary()
+                                    : chosen.length + ' walls'));
+            body.appendChild(heightTools(chosen, w));
+
+            /* The full field table only for a single wall: the min and max
+               corners of six different boxes cannot be shown in one set of
+               numbers, and the height tools above are what a multiple
+               selection is for. */
+            if (chosen.length === 1) {
+                var box = el('div');
+                body.appendChild(box);
+                inspector.fields(box, chosen[0], root.schema.WALL);
+            }
+        }
+
+        /* Height is the axis a plan cannot draw and the one a room is most
+           often adjusted along: a run of walls shares a top, a doorway is a
+           gap with a lintel over it, a curb is a wall that stops at the
+           knee. Everything here acts on every selected wall at once. */
+        function heightTools(chosen, w) {
+            var wrap = el('div', 'heights');
+
+            function shared(read) {
+                var first = read(chosen[0]);
+                for (var i = 1; i < chosen.length; i++) {
+                    if (Math.abs(read(chosen[i]) - first) > 1e-6) { return null; }
+                }
+                return first;
+            }
+
+            function apply(fn) {
+                opts.beginEdit();
+                chosen.forEach(fn);
+                opts.commit();
+                renderList();
+                renderInspector();
+                render();
+                opts.changed();
+            }
+
+            function row(label, read, write, step) {
+                var r = el('div', 'srow');
+                r.appendChild(el('label', 'flabel', label));
+                var n = el('input');
+                n.type = 'number';
+                n.className = 'fnum';
+                n.step = step;
+                var v = shared(read);
+                /* Blank rather than a lie when the selection disagrees.
+                   Typing into it sets them all, which is the point. */
+                n.value = v === null ? '' : +v.toFixed(4);
+                n.placeholder = v === null ? 'mixed' : '';
+                n.addEventListener('change', function () {
+                    var x = parseFloat(n.value);
+                    if (!isNaN(x)) { apply(function (b) { write(b, x); }); }
+                });
+                r.appendChild(n);
+                return r;
+            }
+
+            /* Setting the base MOVES a wall rather than stretching it --
+               "put this on the floor" should not also make it taller. */
+            wrap.appendChild(row('base', function (b) { return b.min[1]; },
+                function (b, x) {
+                    var h = b.max[1] - b.min[1];
+                    b.min[1] = x;
+                    b.max[1] = x + h;
+                }, 0.05));
+            wrap.appendChild(row('top', function (b) { return b.max[1]; },
+                function (b, x) { b.max[1] = Math.max(x, b.min[1] + 0.01); },
+                0.05));
+
+            var floorY = w.floor_y || 0;
+            var bar = el('div', 'srow');
+
+            function op(label, title, fn) {
+                var b2 = el('button', null, label);
+                b2.title = title;
+                b2.addEventListener('click', function () { apply(fn); });
+                bar.appendChild(b2);
+            }
+
+            op('on the floor', 'set the base to floor_y, keeping the height',
+                function (b) {
+                    var h = b.max[1] - b.min[1];
+                    b.min[1] = floorY;
+                    b.max[1] = floorY + h;
+                });
+            op('full', 'floor to well above the walker: not seen over, ' +
+                       'not jumped onto',
+                function (b) {
+                    b.min[1] = floorY;
+                    b.max[1] = floorY + Math.max(3, w.height * 1.75);
+                });
+            op('curb', 'knee high: stops a walk, cleared by a jump',
+                function (b) {
+                    b.min[1] = floorY;
+                    b.max[1] = floorY + 0.4;
+                });
+            wrap.appendChild(bar);
+
+            var nudge = el('div', 'srow');
+            nudge.appendChild(el('label', 'flabel', 'nudge'));
+            [['-10', -0.1], ['-1', -0.01], ['+1', 0.01], ['+10', 0.1]]
+                .forEach(function (pair) {
+                    var nb = el('button', null, pair[0]);
+                    nb.title = 'move by ' + pair[0] + ' cm';
+                    nb.addEventListener('click', function () {
+                        apply(function (b) {
+                            b.min[1] += pair[1];
+                            b.max[1] += pair[1];
+                        });
+                    });
+                    nudge.appendChild(nb);
+                });
+            nudge.appendChild(el('span', 'funit', 'cm'));
+            wrap.appendChild(nudge);
+
+            if (chosen.length > 1) {
+                wrap.appendChild(el('p', 'note',
+                    'Ctrl-click or shift-click adds walls. A drag moves all ' +
+                    'of them; corner handles stay on the last one picked.'));
+            }
+            return wrap;
         }
 
         function refresh(refit) {
