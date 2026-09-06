@@ -48,6 +48,10 @@ rem m2..m6 group: display and oracle, no input.
 cl /nologo /std:c11 /W3 /O2 /DSOKOL_D3D11 /DSOKOL_WIN32_FORCE_MAIN /Fobuild\ /Febuild\shadows.exe ^
     examples\shadows\main.c source\display.c source\oracle.c %PURE% || exit /b 1
 
+rem lens is not a milestone either -- see its header. Same shape again.
+cl /nologo /std:c11 /W3 /O2 /DSOKOL_D3D11 /DSOKOL_WIN32_FORCE_MAIN /Fobuild\ /Febuild\lens.exe ^
+    examples\lens\main.c source\display.c source\oracle.c %PURE% || exit /b 1
+
 rem tools\bench times the GPU, so it compiles from the repository
 rem root with /I. -- it reaches sokol and hologram.h by the same paths a
 rem game would.
@@ -57,8 +61,21 @@ exit /b 0
 
 :tests
 set FAILED=0
+rem cl's output goes to a LOG AND IS PRINTED ON FAILURE, and a test that did not
+rem compile does not run.
+rem
+rem It used to go to nul while the stale build\test_*.exe ran regardless, which
+rem is worse than either half on its own: a test whose source stopped compiling
+rem keeps printing the passes of a binary built before the change, for as long
+rem as nobody reads the exit code. The same trap was found and fixed in daffodil
+rem the same week; this is its twin.
 for %%t in (tests\test_*.c) do (
-    cl /nologo /std:c11 /W4 /Isource /Itests /Fobuild\ /Febuild\%%~nt.exe %%t %PURE% >nul || set FAILED=1
-    build\%%~nt.exe || set FAILED=1
+    cl /nologo /std:c11 /W4 /Isource /Itests /Fobuild\ /Febuild\%%~nt.exe %%t %PURE% >build\cl.log 2>&1 && (
+        build\%%~nt.exe || set FAILED=1
+    ) || (
+        echo %%~nt FAILED TO COMPILE
+        type build\cl.log
+        set FAILED=1
+    )
 )
 exit /b %FAILED%

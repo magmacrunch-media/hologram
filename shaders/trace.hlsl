@@ -35,6 +35,7 @@ cbuffer params : register(b0) {
     float4 dish_axis_k[4];    /* xyz axis, w conic constant */
     float4 dish_albedo_mirror[4];
     float4 dish_rim_count[4]; /* x rim; [0].y = dish count */
+    float4 dish_glass[4];     /* x transmit, y ior at the D line, z Cauchy B */
     float4 spectral_lw[12];   /* x lambda um, yzw CIE-derived sRGB weight */
 
     /* Up to two gratings as SCALAR slots, matched by rect index: every
@@ -239,7 +240,13 @@ bool nearest_hit(float3 ro, float3 rd,
             best_t = t; best_n = n;
             albedo = dish_albedo_mirror[k].xyz;
             mirror = dish_albedo_mirror[k].w;
-            transmit = 0; ior = 1; disperse = 0; volume = false;
+            /* A VOLUME when it is glass, like a sphere and unlike a panel:
+               the ray bends here and `inside` toggles, which is what makes
+               two dishes a lens rather than two sheets of window glass. */
+            transmit = dish_glass[k].x;
+            ior = dish_glass[k].y;
+            disperse = dish_glass[k].z;
+            volume = dish_glass[k].x > 0.0;
             found = true;
             rect_id = -1;
         }
@@ -277,8 +284,10 @@ bool sun_blocked(float3 p) {
             return true;
         }
     }
-    /* A dish is mirror or matte, never glass: it always blocks. */
+    /* A dish blocks unless it is glass -- the same test the spheres and the
+       panels make. Without it a lens casts the shadow of a stone. */
     for (int k = 0; k < (int)dish_rim_count[0].y; k++) {
+        if (dish_glass[k].x > 0.5) continue;
         if (ray_dish(p, sun_dir, dish_apex_r[k].xyz, dish_axis_k[k].xyz,
                      dish_apex_r[k].w, dish_axis_k[k].w,
                      dish_rim_count[k].x, t, n)) {

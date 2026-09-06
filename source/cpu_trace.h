@@ -99,9 +99,29 @@ typedef struct {
     float  order_w[HOLO_GRATING_ORDERS];
 } HoloRect;
 
-/* A curved mirror, in the language optics quotes them: apex, axis, vertex
-   radius of curvature, conic constant, rim. Mirror or matte only -- curved
-   glass (lenses) waits for a milestone of its own. */
+/* A curved surface, in the language optics quotes them: apex, axis, vertex
+   radius of curvature, conic constant, rim.
+ *
+ * MIRROR, MATTE, OR NOW GLASS. Curved glass was left to a milestone of its
+ * own, and this is it: a dish with transmit > 0 is a refracting surface, and
+ * two of them back to back are a LENS. That is the one thing a spectral tracer
+ * can show that a rasterizer cannot fake -- white light entering a lens and
+ * leaving it separated, because n(lambda) really is different for each of the
+ * twelve wavelengths and each one really is bent by Snell's law at both faces.
+ *
+ * A dish's glass is a VOLUME, like a sphere's and unlike a flat panel's: the
+ * ray bends at the surface and the tracer's `inside` flag toggles. That flag
+ * is a boolean and not an interface stack, which is the limitation to know
+ * about -- it is exactly the limitation spheres already have. Two dishes make
+ * a lens when a ray crossing one crosses the other, which for a lens whose
+ * faces share a rim is every ray through it. Overlap three glass surfaces and
+ * the bookkeeping is wrong, the same way three overlapping glass spheres are
+ * wrong today.
+ *
+ * NOT A FRESNEL LENS. A real first-order Fresnel is dozens of concentric
+ * annular prisms and there are four dish slots; this is the single refracting
+ * element that fits, and the prism rings need a primitive that does not exist
+ * yet. */
 typedef struct {
     HoloV3 apex;
     HoloV3 axis;             /* unit, out of the bowl */
@@ -110,6 +130,13 @@ typedef struct {
     float  rim;
     HoloV3 albedo;
     float  mirror;
+
+    /* Glass, exactly as a sphere quotes it: how much passes, the index at
+       the sodium D line, and the Cauchy B that makes it disperse. transmit
+       0 is the old mirror-or-matte dish and every scene built before this. */
+    float  transmit;
+    float  ior;
+    float  disperse;
 } HoloDish;
 
 typedef struct {

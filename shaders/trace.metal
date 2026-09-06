@@ -98,16 +98,17 @@ using namespace metal;
 #define dish_axis_k(i)         params[182 + (i)]
 #define dish_albedo_mirror(i)  params[186 + (i)]
 #define dish_rim_count(i)      params[190 + (i)]
-#define spectral_lw(i)         params[194 + (i)]
+#define dish_glass(i)          params[194 + (i)]
+#define spectral_lw(i)         params[198 + (i)]
 
 /* The gratings sit in scalar slots, not a dynamically indexed array: see the
    note in trace.hlsl. Metal has no such defect, but the tracers stay
    identical in structure so the oracle diff keeps its meaning. */
-#define grat0_groove_idx    params[206]
-#define grat0_period_w      params[207]
-#define grat1_groove_idx    params[208]
-#define grat1_period_w      params[209]
-#define grat_w2             params[210]
+#define grat0_groove_idx    params[210]
+#define grat0_period_w      params[211]
+#define grat1_groove_idx    params[212]
+#define grat1_period_w      params[213]
+#define grat_w2             params[214]
 
 /* Globals must live in an address space; these are compile-time constants. */
 constant float T_MIN = 1e-3;      /* HOLO_T_MIN */
@@ -310,7 +311,13 @@ bool nearest_hit(constant float4 *params, float3 ro, float3 rd,
             best_t = t; best_n = n;
             albedo = dish_albedo_mirror(k).xyz;
             mirror = dish_albedo_mirror(k).w;
-            transmit = 0.0; ior = 1.0; disperse = 0.0; volume = false;
+            /* A VOLUME when it is glass, like a sphere and unlike a panel:
+               the ray bends here and `inside` toggles, which is what makes
+               two dishes a lens rather than two sheets of window glass. */
+            transmit = dish_glass(k).x;
+            ior = dish_glass(k).y;
+            disperse = dish_glass(k).z;
+            volume = dish_glass(k).x > 0.0;
             found = true;
             rect_id = -1;
         }
@@ -348,8 +355,10 @@ bool sun_blocked(constant float4 *params, float3 p) {
             return true;
         }
     }
-    /* A dish is mirror or matte, never glass: it always blocks. */
+    /* A dish blocks unless it is glass -- the same test the spheres and the
+       panels make. Without it a lens casts the shadow of a stone. */
     for (int k = 0; k < int(dish_rim_count(0).y); k++) {
+        if (dish_glass(k).x > 0.5) continue;
         if (ray_dish(p, sun_dir, dish_apex_r(k).xyz, dish_axis_k(k).xyz,
                      dish_apex_r(k).w, dish_axis_k(k).w,
                      dish_rim_count(k).x, t, n)) {

@@ -111,7 +111,12 @@ static void write_dish(FILE *f, const HoloDish *d, const char *tail) {
     wfield_f(f, "      ", "conic_k", d->conic_k, ",\n");
     wfield_f(f, "      ", "rim", d->rim, ",\n");
     wfield_v3(f, "      ", "albedo", d->albedo, ",\n");
-    wfield_f(f, "      ", "mirror", d->mirror, "\n");
+    wfield_f(f, "      ", "mirror", d->mirror, ",\n");
+    /* Glass, so a lens survives a round trip through a scene file the way a
+       glass sphere already does. */
+    wfield_f(f, "      ", "transmit", d->transmit, ",\n");
+    wfield_f(f, "      ", "ior", d->ior, ",\n");
+    wfield_f(f, "      ", "disperse", d->disperse, "\n");
     fprintf(f, "    }%s", tail);
 }
 

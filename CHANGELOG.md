@@ -4,6 +4,58 @@ All notable changes to the hologram engine are documented here.
 
 ## v0.2.0 (unreleased)
 
+### Lenses
+
+A dish can be glass. `HoloDish` gains `transmit`, `ior` and `disperse` --
+the same three a sphere has quoted since M4 -- so a conic surface refracts
+instead of only reflecting, and two of them back to back are a lens. The
+header had said "curved glass (lenses) waits for a milestone of its own"
+since M8; this is it.
+
+- A dish's glass is a VOLUME, like a sphere's and unlike a flat panel's:
+  the ray bends and the tracer's `inside` flag toggles. That flag is a
+  boolean rather than an interface stack, so a lens works when a ray
+  crossing one surface crosses the other -- which for two faces sharing a
+  rim is every ray through it. Three overlapping glass surfaces are wrong,
+  exactly as three overlapping glass spheres already are.
+- `sun_blocked` skips a glass dish in all four tracers. Without it a lens
+  casts the shadow of a stone, which is the most visible thing a lens can
+  get wrong, and it is the same omission dishes had for a whole release
+  before `examples/shadows` existed to catch it.
+- `dish_glass` joins the uniform block between `dish_rim_count` and
+  `spectral_lw`, which moved every slot after it by four. GLSL and Metal
+  index by slot and were renumbered; `tests/test_gpu_layout.c` asserts
+  every one of them against `offsetof`, which is what made that safe to do
+  rather than frightening.
+
+`examples/lens` -- two lenses at their shared focus, and the frame that
+shows what only a spectral tracer can. Both are n = 1.58 at the D line and
+differ only in Cauchy B, by a factor of seven, so they focus in the same
+place and everything left between them is dispersion. The low-dispersion
+lens shows a thin coloured ring; the high-dispersion one spreads the sun
+into concentric spectra, red outside and blue in. In the RGB path there is
+no wavelength and the two are identical -- worth looking at once, because
+that is what every non-spectral renderer would show you.
+
+`tests/test_trace.c` measures rather than predicts. It scans the axis for
+the brightest position at two wavelengths and asserts the ORDER: blue comes
+to a focus nearer the glass than red, 175 mm apart on a dense flint. No
+thin-lens formula is needed to trust that, and it comes out wrong if
+dispersion is dropped anywhere in the four tracers. Also: the lens focuses
+at all (measured 1.77 m where thin-lens optics says 1.94, the difference
+being thickness), and glass over ground leaves it lit at 0.900 where a
+mirror leaves it at 0.090.
+
+NOT A FRESNEL LENS, and the gap is worth stating: a first-order Fresnel is
+dozens of concentric annular prisms and there are four dish slots. This is
+the single refracting element that fits. The rings need a primitive that
+does not exist yet.
+
+- `build.bat`'s test loop logged `cl` to nul and ran the stale binary
+  regardless, so a test whose source stopped compiling went on printing the
+  passes of an older build. It prints the log and skips the run now. The
+  same trap was found in daffodil the same week; this is its twin.
+
 ### The editor
 
 `editor/` -- a page that runs `shaders/trace.glsl` in WebGL2 and flies a

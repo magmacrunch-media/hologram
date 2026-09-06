@@ -120,6 +120,9 @@ void holo_gpu_scene_fill(HoloGpuScene *gpu, const HoloScene *scene,
         put3(gpu->dish_albedo_mirror[i], scene->dishes[i].albedo);
         gpu->dish_albedo_mirror[i][3] = scene->dishes[i].mirror;
         gpu->dish_rim_count[i][0] = scene->dishes[i].rim;
+        gpu->dish_glass[i][0] = scene->dishes[i].transmit;
+        gpu->dish_glass[i][1] = scene->dishes[i].ior;
+        gpu->dish_glass[i][2] = scene->dishes[i].disperse;
     }
     gpu->dish_rim_count[0][1] = (float)scene->dish_count;
 

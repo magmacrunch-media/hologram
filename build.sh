@@ -94,6 +94,9 @@ done
 # m2..m6 group: display and oracle, no input.
 build_example shadows source/oracle.c
 
+# lens is not a milestone either -- see its header. Same shape again.
+build_example lens source/oracle.c
+
 # tools/bench: GPU cost per panel. It has a real GPU clock only on
 # D3D11; elsewhere it falls back to the frame clock and says so.
 # shellcheck disable=SC2086

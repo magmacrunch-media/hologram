@@ -48,6 +48,7 @@ static Field fields[] = {
     F(rect_corner_mirror), F(rect_solve_u), F(rect_solve_v),
     F(rect_albedo), F(rect_glass), F(rect_filter),
     F(dish_apex_r), F(dish_axis_k), F(dish_albedo_mirror), F(dish_rim_count),
+    F(dish_glass),
     F(spectral_lw),
     F(grat0_groove_idx), F(grat0_period_w),
     F(grat1_groove_idx), F(grat1_period_w), F(grat_w2),

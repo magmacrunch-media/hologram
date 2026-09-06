@@ -75,6 +75,7 @@ accept `--dump`, which writes that comparison's inputs out for `tools/gldiff`.
 | `m8_furnace` | A paraboloid with its focus at eye height on the path. Walk into it. |
 | `m9_spectrum` | Two ruled gratings throwing the sun's orders back at you. |
 | `shadows` | What blocks the sun and what deliberately does not: a dish, a matte sphere and an opaque panel casting, a glass ball casting nothing. |
+| `lens` | Two lenses of the same glass index and different dispersion, seen from their shared focus. Run with `--spectral`: the low-dispersion one shows a thin coloured ring and the high-dispersion one spreads the sun into concentric spectra. |
 
 `m7_room`, `m8_furnace` and `m9_spectrum` are interactive: click to capture the
 mouse, `WASD` to walk, `Space` to jump, `T` to toggle spectral tracing, `Escape`
@@ -126,6 +127,7 @@ pixels off by more than 8/255. Every one passes.
 | `m8_furnace` | conic dishes, focusing at R/2 | 0.0191 · 0.022% | 0.0016 · 0.010% | 0.0283 · 0.022% |
 | `m9_spectrum` | gratings, conical orders | 0.0949 · 0.025% | 0.0026 · 0.010% | 0.0973 · 0.025% |
 | `shadows` | who casts one, and the two who do not | 0.0070 · 0.021% | 0.0066 · 0.115% | 0.0101 · 0.021% |
+| `lens` | refracting dishes, chromatic aberration | 0.0343 · 0.009% | — | — |
 
 `shadows` is the row to copy when a decision gets duplicated into the
 dialects: it exists because sun_blocked was stated four times and no frame

@@ -439,6 +439,165 @@ static void test_grating_orders(void) {
                 "the second order joins at 450nm");
 }
 
+/* A biconvex lens of two dishes, centred on the origin, optical axis +z.
+ *
+ * A dish is the surface z = r^2 / 2R in its own frame, a bowl opening along
+ * its axis. So a lens is two of them back to back:
+ *
+ *   front  apex at -t/2, axis +z  -- bulges toward -z, the incoming side
+ *   rear   apex at +t/2, axis -z  -- bulges toward +z
+ *
+ * Light going +z enters the front, travels inside the glass, and leaves the
+ * rear converging. Backward from a point behind it -- which is how this tracer
+ * works -- a ray from the focus refracts at both surfaces and emerges parallel
+ * to the axis, into the sun. That is the same argument the paraboloid focus
+ * test makes, with Snell twice instead of a reflection once. */
+static void build_lens(HoloScene *s, float thick, float curv_r, float rim,
+                       float ior_d, float cauchy_b) {
+    s->dishes[0] = (HoloDish){
+        .apex = hv3(0, 0, -thick * 0.5f), .axis = hv3(0, 0, 1),
+        .curv_r = curv_r, .conic_k = 0.0f, .rim = rim,
+        .albedo = hv3(1, 1, 1), .mirror = 0.0f,
+        .transmit = 1.0f, .ior = ior_d, .disperse = cauchy_b,
+    };
+    s->dishes[1] = (HoloDish){
+        .apex = hv3(0, 0, thick * 0.5f), .axis = hv3(0, 0, -1),
+        .curv_r = curv_r, .conic_k = 0.0f, .rim = rim,
+        .albedo = hv3(1, 1, 1), .mirror = 0.0f,
+        .transmit = 1.0f, .ior = ior_d, .disperse = cauchy_b,
+    };
+    s->dish_count = 2;
+}
+
+/* Where the lens brings one wavelength to a point, found by looking. Trace
+   from a series of positions along the axis toward a fixed off-axis zone of
+   the lens, and take the position that sees the sun brightest. The tracer is
+   the instrument; nothing here assumes a focal length. */
+static float measure_focus(HoloScene *s, float lambda_um, float zone_r,
+                           float lo, float hi, float step, float *peak_out) {
+    float best_z = lo, best = -1.0f;
+    for (float z = lo; z <= hi; z += step) {
+        HoloV3 eye = hv3(0, 0, z);
+        HoloV3 target = hv3(zone_r, 0, 0);
+        HoloRay r = { .origin = eye, .dir = hv3_norm(hv3_sub(target, eye)) };
+        float v = holo_trace_lambda(s, r, lambda_um);
+        if (v > best) { best = v; best_z = z; }
+    }
+    if (peak_out) *peak_out = best;
+    return best_z;
+}
+
+static void test_lens_focuses(void) {
+    printf("trace: a lens brings the sun to a focus\n");
+    /* A ray from the focus, out through the lens, must land in the sun disk;
+       a ray from well off the focus must not. This is the refracting twin of
+       the paraboloid test above, and it is the whole reason a dish was given
+       glass. */
+    HoloScene s = {
+        .sun_dir = hv3(0, 0, -1),
+        .sun_disk_cos = 0.9994f,   /* about a 2-degree disk */
+        .sun_disk_intensity = 25.0f,
+        .horizon = hv3(0.3f, 0.3f, 0.3f), .zenith = hv3(0.3f, 0.3f, 0.3f),
+    };
+    build_lens(&s, 0.30f, 2.0f, 1.0f, 1.5168f, 0.0f); /* achromatic BK7 */
+
+    float peak = 0.0f;
+    float f = measure_focus(&s, 0.55f, 0.7f, 0.5f, 4.0f, 0.01f, &peak);
+    printf("  focus at z = %.2f m, peak %.1f\n", (double)f, (double)peak);
+
+    check(peak > 15.0f, "at the focus the lens fills with sun");
+    /* The thin-lens prediction for a symmetric biconvex, f = R / 2(n-1), is
+       1.94 m. This is a THICK lens, so agreement is expected to be loose
+       rather than exact -- the claim is that the tracer focuses near where
+       optics says it should, not that it reproduces a formula it does not
+       use. */
+    check(f > 1.4f && f < 2.6f, "and near where thin-lens optics predicts");
+
+    /* Well inside the focus, the same aim sees plain sky through the glass. */
+    HoloV3 target = hv3(0.7f, 0, 0);
+    HoloRay r = { .origin = hv3(0, 0, 0.6f) };
+    r.dir = hv3_norm(hv3_sub(target, r.origin));
+    float off = holo_trace_lambda(&s, r, 0.55f);
+    check(off < 5.0f, "off the focus, no sun through the lens");
+}
+
+static void test_lens_has_chromatic_aberration(void) {
+    printf("trace: blue comes to a focus before red\n");
+    /* THE CLAIM ONLY A SPECTRAL TRACER CAN MAKE. Glass is more strongly
+       refracting at short wavelengths, so a single lens has no one focal
+       length: blue focuses nearer the glass than red, which is why every
+       refracting telescope before the achromat had a purple fringe and why
+       Newton built a reflector instead.
+     *
+       Measured rather than predicted. Both wavelengths go through the same
+       tracer with the same geometry and the only difference is n(lambda), so
+       what is asserted is the ORDER -- which no thin-lens formula is needed to
+       trust, and which comes out wrong if dispersion is dropped anywhere in
+       the four tracers. */
+    HoloScene s = {
+        .sun_dir = hv3(0, 0, -1),
+        .sun_disk_cos = 0.99995f,  /* a sharp disk, so the focus is sharp */
+        .sun_disk_intensity = 25.0f,
+        .horizon = hv3(0.3f, 0.3f, 0.3f), .zenith = hv3(0.3f, 0.3f, 0.3f),
+    };
+    /* Dense flint, several times BK7's dispersion, so the two foci are far
+       enough apart to separate at the step this scan can afford. */
+    build_lens(&s, 0.30f, 2.0f, 1.0f, 1.62f, 0.025f);
+
+    float pb = 0.0f, pr = 0.0f;
+    float f_blue = measure_focus(&s, 0.45f, 0.7f, 0.8f, 3.0f, 0.005f, &pb);
+    float f_red = measure_focus(&s, 0.65f, 0.7f, 0.8f, 3.0f, 0.005f, &pr);
+    printf("  blue focus %.3f m (peak %.1f), red %.3f m (peak %.1f), "
+           "spread %.0f mm\n",
+           (double)f_blue, (double)pb, (double)f_red, (double)pr,
+           (double)((f_red - f_blue) * 1000.0f));
+
+    check(pb > 15.0f && pr > 15.0f, "both wavelengths focus at all");
+    check(f_blue < f_red, "blue focuses nearer the lens than red");
+    check(f_red - f_blue > 0.01f, "and the two are measurably apart");
+}
+
+static void test_a_lens_is_not_a_stone(void) {
+    printf("trace: a lens lights the ground it stands over\n");
+    /* The dish shadow test's opposite number. A mirror dish throws a hard
+       shadow; a lens is glass and lets the sun through, so the floor beneath
+       it is lit. Without the transmit test in sun_blocked a lens would shade
+       the ground like a rock, which is the most visible thing a lens can get
+       wrong and is exactly what the mirror-dish shadow code did before. */
+    HoloScene s = {
+        .has_floor = 1,
+        .floor_a = hv3(0.9f, 0.9f, 0.9f),
+        .floor_b = hv3(0.9f, 0.9f, 0.9f),
+        .sun_dir = hv3(0, 1, 0),
+        .horizon = hv3(1, 1, 1), .zenith = hv3(0.2f, 0.4f, 0.6f),
+    };
+    /* The same lens, lying flat three metres up with the sun overhead. */
+    s.dishes[0] = (HoloDish){ .apex = hv3(0, 2.85f, 0), .axis = hv3(0, 1, 0),
+                              .curv_r = 20.0f, .conic_k = 0.0f, .rim = 2.0f,
+                              .albedo = hv3(1, 1, 1), .mirror = 0.0f,
+                              .transmit = 1.0f, .ior = 1.5168f,
+                              .disperse = 0.0f };
+    s.dishes[1] = (HoloDish){ .apex = hv3(0, 3.15f, 0), .axis = hv3(0, -1, 0),
+                              .curv_r = 20.0f, .conic_k = 0.0f, .rim = 2.0f,
+                              .albedo = hv3(1, 1, 1), .mirror = 0.0f,
+                              .transmit = 1.0f, .ior = 1.5168f,
+                              .disperse = 0.0f };
+    s.dish_count = 2;
+
+    /* Looking down at the floor from beside the lens, at a point under it. */
+    HoloRay r = { .origin = hv3(0, 1.0f, 0), .dir = hv3(0, -1, 0) };
+    float lit = holo_trace_lambda(&s, r, 0.55f);
+
+    /* The same scene with the lens made a mirror instead. */
+    s.dishes[0].transmit = 0.0f; s.dishes[0].mirror = 1.0f;
+    s.dishes[1].transmit = 0.0f; s.dishes[1].mirror = 1.0f;
+    float shaded = holo_trace_lambda(&s, r, 0.55f);
+
+    printf("  under glass %.3f, under mirror %.3f\n",
+           (double)lit, (double)shaded);
+    check(lit > shaded * 1.5f, "glass lets the sun through and a mirror does not");
+}
+
 int main(void) {
     test_camera();
     test_shading();
@@ -456,5 +615,8 @@ int main(void) {
     test_solar_furnace();
     test_dish_shadow();
     test_grating_orders();
+    test_lens_focuses();
+    test_lens_has_chromatic_aberration();
+    test_a_lens_is_not_a_stone();
     return report();
 }

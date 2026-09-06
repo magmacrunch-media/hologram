@@ -52,6 +52,7 @@ typedef struct {
     float dish_axis_k[HOLO_MAX_DISHES][4];          /* xyz axis, w conic_k */
     float dish_albedo_mirror[HOLO_MAX_DISHES][4];   /* xyz albedo, w mirror */
     float dish_rim_count[HOLO_MAX_DISHES][4];       /* x rim; [0].y = dish count */
+    float dish_glass[HOLO_MAX_DISHES][4];           /* x transmit, y ior, z disperse */
 
     /* x = lambda in um, yzw = that sample's CIE-derived sRGB weight. The
        shader must not re-derive these: CPU and GPU folding the same floats

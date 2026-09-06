@@ -23,7 +23,9 @@
  * the sun behind them, so every shadow is thrown forward into open frame
  * rather than hiding behind the thing that cast it:
  *
- *     dish          opaque, mirror or matte and never glass -- casts
+ *     dish          the one here is matte, so it casts. A dish CAN be glass
+ *                   now -- see examples/lens -- and a glass one casts
+ *                   nothing, for the same reason the glass sphere does not
  *     matte sphere  the ordinary case, and the control for the rest
  *     glass sphere  casts NOTHING, on purpose
  *     panel         an opaque rect -- casts

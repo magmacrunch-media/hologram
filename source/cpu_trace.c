@@ -66,10 +66,13 @@ static int nearest_hit(const HoloScene *scene, HoloRay ray, HoloHit *hit,
             best = h;
             surf->albedo = scene->dishes[i].albedo;
             surf->mirror = scene->dishes[i].mirror;
-            surf->transmit = 0.0f;
-            surf->ior = 1.0f;
-            surf->disperse = 0.0f;
-            surf->volume = 0;
+            surf->transmit = scene->dishes[i].transmit;
+            surf->ior = scene->dishes[i].ior;
+            surf->disperse = scene->dishes[i].disperse;
+            /* A VOLUME, like a sphere and unlike a panel: the ray bends here
+               and `inside` toggles, which is what makes two dishes a lens
+               rather than two sheets of window glass. */
+            surf->volume = scene->dishes[i].transmit > 0.0f;
             surf->filter = HOLO_FILTER_NONE;
             surf->rect = -1;
             surf->grating = 0.0f;
@@ -122,9 +125,11 @@ static int sun_blocked(const HoloScene *scene, HoloV3 point) {
             return 1;
         }
     }
-    /* A dish is mirror or matte -- never glass -- so it always blocks.
-       There is no transmit test to make: HoloDish has no such field. */
+    /* A dish blocks the sun unless it is glass, the same test the spheres and
+       the panels already make. Without it a lens casts the shadow of a stone,
+       which is the most visible thing a lens can get wrong. */
     for (int i = 0; i < scene->dish_count; i++) {
+        if (scene->dishes[i].transmit > 0.5f) continue;
         if (holo_ray_dish(shadow, scene->dishes[i].apex,
                           scene->dishes[i].axis, scene->dishes[i].curv_r,
                           scene->dishes[i].conic_k, scene->dishes[i].rim,
