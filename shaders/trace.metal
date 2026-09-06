@@ -436,7 +436,20 @@ float3 trace(constant float4 *params, float3 ro, float3 rd) {
                 st_inside[sp] = p_inside; st_depth[sp] = p_depth + 1;
                 sp++;
             }
-            continue;
+            /* No `continue` here, and that is not a style choice. fxc
+               miscompiles a dynamically indexed stack write immediately
+               followed by `continue`: the pushed ray is not there on the
+               next pop, so the walk re-traces the primary ray until
+               MAX_RAYS runs out and the pixel comes out black. Mesa
+               renders this same source correctly; D3D11 and WebGL2 both
+               fail because ANGLE compiles through fxc too. This is the
+               second fxc indexed-array defect here -- see the note on the
+               grating slots in trace.hlsl for the first.
+
+               Zeroing the material is what the `continue` was for: a black
+               mirror leaves matte at zero, so no shadow ray is cast and
+               nothing is added, and every push below is culled. */
+            albedo = float3(0.0); mirror = 1.0; transmit = 0.0;
         }
 
         float matte = 1.0 - mirror - transmit;

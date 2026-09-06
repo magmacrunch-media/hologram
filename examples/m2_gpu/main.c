@@ -17,7 +17,7 @@
 
 static HoloGpuScene gpu;
 static HoloScene scene;
-static char shader_src[32768];
+static char shader_src[65536];
 static int diff_mode;
 static int dump_mode;
 static int frames_drawn;

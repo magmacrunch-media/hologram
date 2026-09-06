@@ -413,6 +413,35 @@ Dishes throw shadows.
   originally; m7_room reproduced its recorded numbers exactly, which is
   what says the setup was the same one.
 
+A polarizer renders, on Direct3D too.
+
+- In the RGB walk both Windows backends drew a polarizer BLACK where
+  cpu_trace.c draws it at the intended flat 50%. Not a tracer bug: the
+  filter branch pushes a straight-through ray and then `continue`s, and
+  **fxc loses the push**, so the walk re-traces the primary ray until
+  MAX_RAYS runs out and the pixel comes out black.
+- Mesa is what proved the source innocent. The same GLSL, the same
+  scene: D3D11 FAIL at 0.4101/255 and 0.841% of pixels, Linux GL OK at
+  0.0066 and 0.115%. WebGL2 failed with D3D11 rather than with GL,
+  which is the tell -- ANGLE compiles through fxc as well, so those two
+  were never independent witnesses. This is the second fxc
+  indexed-array defect here; the grating slots were the first.
+- Worked around in all three dialects by not writing the stack
+  immediately before a `continue`: the material is zeroed instead and
+  the rest of the body falls through as a no-op. The grating branch has
+  the same shape and was checked -- it is not affected, so it is left
+  alone.
+- `examples/shadows` now stands the polarizer it previously had to
+  leave out, so the oracle guards this: 0.0084/255 and 0.021% on D3D11,
+  where it was a 0.841% failure. No other example can see it --
+  m6_polarization has six polarizers and diffs spectrally.
+- The examples' shader buffer was a latent trap and is now 65536 in all
+  of them. m2..m5 and shadows still had 32768 while m6..m9 had been
+  bumped at some point; trace.glsl is 33394 bytes and trace.metal
+  35089, so those five were already over the line on Metal and went
+  over on GL the moment a comment grew. The failure is a clean
+  "shaders/trace.glsl does not fit in 32768 bytes", not a crash.
+
 The game release: whatever Crystal Mirror Maze development asks of the
 engine lands here.
 

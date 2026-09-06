@@ -15,7 +15,7 @@
  *
  * This frame is arranged to be loud instead. The same mutation here:
  *
- *     intact   mean 0.0070/255, max  60/255, 0.021% off by >8   OK
+ *     intact   mean 0.0084/255, max  60/255, 0.021% off by >8   OK
  *     no dish  mean 1.2491/255, max 130/255, 2.984% off by >8   FAIL
  *
  * -- past the mean bar of 1.0 and four times past the outlier bar of
@@ -29,6 +29,7 @@
  *     matte sphere  the ordinary case, and the control for the rest
  *     glass sphere  casts NOTHING, on purpose
  *     panel         an opaque rect -- casts
+ *     polarizer     casts nothing either, also on purpose
  *
  * The glass is not an oversight. Mostly-clear glass throws no hard shadow
  * because without caustics a black disc under a glass ball is more wrong
@@ -36,14 +37,27 @@
  * shadow ray stopping at it would be claiming it swallowed the light
  * instead. tests/test_trace.c pins that.
  *
- * A polarizer is excused for the same reason plus one more -- half
- * absorbing the sun on the way in would double-count what Malus already
- * does at the surface -- and it is NOT in this scene, for a reason worth
- * recording. In the RGB path the two GPU dialects draw a polarizer black
- * where cpu_trace.c draws it at 50%. Standing one here costs 0.841% of
- * pixels and fails the diff over something with nothing to do with
- * shadows. m6_polarization cannot see it either: it diffs with
- * spectral = 1, and the approximation only exists in the RGB walk.
+ * A polarizer is excused for that reason plus one more -- half absorbing
+ * the sun on the way in would double-count what Malus already does at
+ * the surface.
+ *
+ * That pane earns its place twice over, because standing it here is what
+ * found an fxc miscompilation. In the RGB walk the filter branch pushes a
+ * straight-through ray and then `continue`s, and fxc loses the push: the
+ * walk re-traces the primary ray until MAX_RAYS runs out and the pane
+ * comes out BLACK where cpu_trace.c has it at 50%.
+ *
+ *     before   D3D11 0.4101/255, 0.841%  FAIL     Mesa GL 0.0066, 0.115%  OK
+ *     after    D3D11 0.0084/255, 0.021%  OK       Mesa GL unchanged
+ *
+ * Mesa rendering the same GLSL correctly is what says the source was
+ * never wrong; D3D11 and WebGL2 both failed because ANGLE compiles
+ * through fxc as well. The workaround is in all three dialects, at the
+ * filter branch, with the reasoning beside it.
+ *
+ * No example could see this before: m6_polarization has six polarizers
+ * and diffs with spectral = 1, and the flat-50% approximation exists only
+ * in the RGB walk. So this pane is now the regression test.
  *
  *   build\shadows.exe          look at it
  *   build\shadows.exe --diff   hold it to the CPU oracle
@@ -56,7 +70,7 @@
 
 static HoloGpuScene gpu;
 static HoloScene scene;
-static char shader_src[32768];
+static char shader_src[65536];
 static int diff_mode;
 static int dump_mode;
 static int frames_drawn;
@@ -109,8 +123,15 @@ sapp_desc sokol_main(int argc, char *argv[]) {
               .edge_u = { 1.3f, 0.0f, 0.0f },
               .edge_v = { 0.0f, 1.7f, 0.0f },
               .albedo = { 0.55f, 0.58f, 0.62f } },
+            /* A polarizer: opaque-looking, and the floor under it stays
+               lit. In the RGB walk it is a flat 50% absorber. */
+            { .corner = { 3.6f, 0.0f, -0.15f },
+              .edge_u = { 1.3f, 0.0f, 0.0f },
+              .edge_v = { 0.0f, 1.7f, 0.0f },
+              .albedo = { 0.8f, 0.8f, 0.85f },
+              .filter = HOLO_POLARIZER, .filter_angle = 0.7854f },
         },
-        .rect_count = 1,
+        .rect_count = 2,
         .dishes = {
             /* A shallow matte paraboloid, wide enough that a dialect
                forgetting it moves thousands of pixels by most of the
