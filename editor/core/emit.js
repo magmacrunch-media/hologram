@@ -155,6 +155,12 @@
         p.push('.rim = ' + fl(d.rim));
         if (!isZeroV3(d.albedo)) { p.push('.albedo = ' + v3(d.albedo)); }
         if (d.mirror) { p.push('.mirror = ' + fl(d.mirror)); }
+        /* Glass, or the emitted lens comes back a mirror. Omitted when
+           zero, like every other field here, so a scene written before
+           dishes could be glass emits exactly what it did before. */
+        if (d.transmit) { p.push('.transmit = ' + fl(d.transmit)); }
+        if (d.ior) { p.push('.ior = ' + fl(d.ior)); }
+        if (d.disperse) { p.push('.disperse = ' + fl(d.disperse)); }
         return p;
     }
 

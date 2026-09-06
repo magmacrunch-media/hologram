@@ -54,12 +54,13 @@
         ['dish_axis_k', MAX_DISHES, 182],
         ['dish_albedo_mirror', MAX_DISHES, 186],
         ['dish_rim_count', MAX_DISHES, 190],
-        ['spectral_lw', S.WAVELENGTHS, 194],
-        ['grat0_groove_idx', 1, 206],
-        ['grat0_period_w', 1, 207],
-        ['grat1_groove_idx', 1, 208],
-        ['grat1_period_w', 1, 209],
-        ['grat_w2', 1, 210]
+        ['dish_glass', MAX_DISHES, 194],
+        ['spectral_lw', S.WAVELENGTHS, 198],
+        ['grat0_groove_idx', 1, 210],
+        ['grat0_period_w', 1, 211],
+        ['grat1_groove_idx', 1, 212],
+        ['grat1_period_w', 1, 213],
+        ['grat_w2', 1, 214]
     ];
 
     /* Slot base per field, and the check that the declared bases and the
@@ -80,9 +81,9 @@
         return at;
     }());
 
-    if (TOTAL_SLOTS !== 211) {
+    if (TOTAL_SLOTS !== 215) {
         throw new Error('scene.js layout: ' + TOTAL_SLOTS +
-                        ' slots, but shaders/trace.glsl declares vec4 params[211]');
+                        ' slots, but shaders/trace.glsl declares vec4 params[215]');
     }
 
     var TOTAL_FLOATS = TOTAL_SLOTS * 4;
@@ -247,6 +248,13 @@
             put3(out, db, v(d.albedo));
             out[db + 3] = d.mirror || 0;
             out[(SLOT.dish_rim_count + i) * 4] = d.rim || 0;
+            /* Glass, exactly as a sphere quotes it. A dish written
+               before dishes could be glass has none of these, and
+               || 0 is what makes it read as the mirror it was. */
+            db = (SLOT.dish_glass + i) * 4;
+            out[db] = d.transmit || 0;
+            out[db + 1] = d.ior || 0;
+            out[db + 2] = d.disperse || 0;
         }
         /* Written unconditionally, after the loop, exactly as the C does --
            including when there are no dishes at all. */

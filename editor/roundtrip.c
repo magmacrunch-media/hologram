@@ -25,7 +25,7 @@
  *         source/timestep.c
  *     build\roundtrip.exe
  *
- * Last run: 840 of 840 floats identical.
+ * Last run: 856 of 856 floats identical (215 slots, dishes carrying glass).
  */
 #include <math.h>
 #include <stdio.h>

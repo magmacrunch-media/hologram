@@ -23,8 +23,10 @@
 
     var S = root.scene;
 
-    /* Shared material fields. HoloSphere and HoloRect carry the same four
-       glass fields with the same meanings; only the geometry differs. */
+    /* Shared material fields. HoloSphere, HoloRect and HoloDish carry the
+       same glass fields with the same meanings; only the geometry differs.
+       A rect is the odd one out: a pane, not a volume. A glass dish bends
+       like a sphere does, which is what makes two of them a lens. */
     function glassFields(kind) {
         var pane = kind === 'rect';
         return [
@@ -148,7 +150,7 @@
           help: 'Half-aperture: the dish is cut off beyond this radius.' },
         ALBEDO,
         MIRROR
-    ];
+    ].concat(glassFields('dish'));
 
     /* Scene-level fields, in two groups, matching HoloScene's own ordering. */
     var FLOOR = [
