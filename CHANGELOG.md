@@ -314,6 +314,30 @@ Editing heights, and more than one wall at a time.
   panel on whichever corner is lowest. That is the arithmetic that leaves a
   sphere half-sunk when it is done by hand.
 
+Dishes throw shadows.
+
+- `sun_blocked` tested spheres and panels and stopped there, so a curved
+  mirror -- solid, opaque, mirror or matte and never glass -- let the sun
+  straight through it onto the ground below. v0.1.0's M8 note said as
+  much in a parenthesis and it stayed said. Fixed in all four statements
+  of the tracer.
+- The oracle diff does not catch this, which is the more useful finding.
+  Deleting the dish loop from trace.hlsl and re-running `m8_furnace
+  --diff` still reports DIFF OK: mean err 0.0191 -> 0.0289 per 255,
+  pixels off by >8 0.022% -> 0.087%, both well inside the thresholds,
+  because m8's dishes hang over floor the camera barely sees. A whole
+  occluder can go missing between the CPU and a dialect without moving
+  the verdict.
+- So `test_gpu_layout.c`, already the test that reads the shaders,
+  now reads all three and holds each one's `sun_blocked` to naming every
+  shape the CPU occludes. A text check, deliberately: it cannot tell you
+  the loop is right, only that the dialect has not silently stopped
+  trying -- which is the failure that actually happened.
+- `tests/test_trace.c` gains a paraboloid over a plain floor: ambient
+  under the bowl, full sun five meters out past a rim of two. Note the
+  shadow ray still crosses the paraboloid's surface out there; it is the
+  rim clip, not a miss, that lets the light by.
+
 The game release: whatever Crystal Mirror Maze development asks of the
 engine lands here.
 

@@ -377,6 +377,43 @@ static void test_solar_furnace(void) {
     check_close(unlit, 0.4f, "off the focus, plain sky in the mirror");
 }
 
+static void test_dish_shadow(void) {
+    printf("trace: a dish shades the ground under it\n");
+    /* A shallow paraboloid three meters up, opening at the noon sun, over
+       a plain grey floor. A dish is never glass, so unlike a window it
+       throws an ordinary hard shadow; the eye looking straight down passes
+       under the rim without touching it. */
+    HoloScene s = {
+        .dishes = { { .apex = hv3(0, 3, 0), .axis = hv3(0, 1, 0),
+                      .curv_r = 20.0f, .conic_k = -1.0f, .rim = 2.0f,
+                      .albedo = hv3(1, 1, 1), .mirror = 1.0f } },
+        .dish_count = 1,
+        .has_floor = 1,
+        .floor_a = hv3(0.9f, 0.9f, 0.9f),
+        .floor_b = hv3(0.9f, 0.9f, 0.9f),
+        .sun_dir = hv3(0, 1, 0),
+        .horizon = hv3(1, 1, 1), .zenith = hv3(0.2f, 0.4f, 0.6f),
+    };
+
+    /* Half a meter off the axis: well inside the rim, so the shadow ray
+       up from the floor meets the bowl. */
+    HoloRay under = { .origin = hv3(0.5f, 1, 0), .dir = hv3(0, -1, 0) };
+    HoloV3 c = holo_trace_ray(&s, under);
+    check_close(c.x, 0.9f * HOLO_AMBIENT, "floor under the dish is ambient");
+
+    /* Five meters out, past a rim of two: the sun gets through. Note the
+       shadow ray does still cross the paraboloid's SURFACE out here -- it
+       is the rim clip, not a miss, that lets the light by. */
+    HoloRay beside = { .origin = hv3(5, 1, 0), .dir = hv3(0, -1, 0) };
+    c = holo_trace_ray(&s, beside);
+    check_close(c.x, 0.9f, "floor past the rim is fully lit");
+
+    /* And on the spectral path, which shades in a separate statement. */
+    float dark = holo_trace_lambda(&s, under, 0.55f);
+    float lit = holo_trace_lambda(&s, beside, 0.55f);
+    check(dark < 0.25f * lit, "the spectral path shades it too");
+}
+
 static void test_grating_orders(void) {
     printf("trace: a grating fans light into its orders\n");
     /* Normal incidence on a 1um grating under a uniform white sky, every
@@ -417,6 +454,7 @@ int main(void) {
     test_polarizers_in_scene();
     test_waveplate_colors();
     test_solar_furnace();
+    test_dish_shadow();
     test_grating_orders();
     return report();
 }

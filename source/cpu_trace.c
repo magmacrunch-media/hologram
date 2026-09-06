@@ -122,6 +122,16 @@ static int sun_blocked(const HoloScene *scene, HoloV3 point) {
             return 1;
         }
     }
+    /* A dish is mirror or matte -- never glass -- so it always blocks.
+       There is no transmit test to make: HoloDish has no such field. */
+    for (int i = 0; i < scene->dish_count; i++) {
+        if (holo_ray_dish(shadow, scene->dishes[i].apex,
+                          scene->dishes[i].axis, scene->dishes[i].curv_r,
+                          scene->dishes[i].conic_k, scene->dishes[i].rim,
+                          &h)) {
+            return 1;
+        }
+    }
     /* The floor cannot shade anything: it is below everything and the sun is
        above it by convention. */
     return 0;

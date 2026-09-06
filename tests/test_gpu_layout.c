@@ -13,6 +13,11 @@
  *
  * It is the only test that reads a file, so it wants the working directory
  * the build scripts already use: the repository root.
+ *
+ * It reads the other two dialects as well, for one thing the numbers cannot
+ * check: that each of the three occludes every shape the CPU occludes. See
+ * the comment on check_occluders below for why the oracle diff does not
+ * catch that on its own.
  */
 #include <stddef.h>
 #include <stdio.h>
@@ -78,6 +83,52 @@ static int parse_accessor(const char *line, char *name, size_t name_size,
     return 1;
 }
 
+/* sun_blocked decides what casts a shadow, and it is stated four times: in
+   cpu_trace.c and once per dialect. Nothing else checks the three against
+   the one -- the oracle diff will not. Deleting the dish loop from
+   trace.hlsl and re-running m8_furnace --diff still reports DIFF OK (mean
+   err 0.0191 -> 0.0289 per 255, pixels off by >8 0.022% -> 0.087%), because
+   the dishes there hang over a floor the camera barely sees. A whole
+   occluder can go missing inside the verdict's own thresholds.
+
+   So this is a text check, deliberately: it does not verify the loop is
+   right, only that the dialect has not quietly stopped trying. That is the
+   failure that actually happened -- dishes were added in M8 and never
+   reached sun_blocked in any of the four. */
+static void check_occluders(const char *path) {
+    static char buf[262144];
+    FILE *f = fopen(path, "rb");
+    char what[256];
+    if (!f) {
+        snprintf(what, sizeof what, "could not open %s", path);
+        check(0, what);
+        return;
+    }
+    size_t n = fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    buf[n] = 0;
+
+    /* The body runs from the signature to the first line-start brace,
+       which is how every function in these files ends. */
+    char *start = strstr(buf, "bool sun_blocked");
+    if (!start) {
+        snprintf(what, sizeof what, "%s declares sun_blocked", path);
+        check(0, what);
+        return;
+    }
+    char *end = strstr(start, "\n}");
+    if (end) {
+        *end = 0;
+    }
+
+    static const char *shapes[] = { "ray_sphere", "ray_rect", "ray_dish" };
+    for (int i = 0; i < 3; i++) {
+        snprintf(what, sizeof what, "%s: sun_blocked tests %s",
+                 path, shapes[i]);
+        check(strstr(start, shapes[i]) != NULL, what);
+    }
+}
+
 int main(void) {
     printf("gpu layout: the block is a whole number of float4 slots\n");
     check(sizeof(HoloGpuScene) % 16 == 0,
@@ -126,6 +177,11 @@ int main(void) {
                  "trace.glsl still has an accessor for %s", fields[i].name);
         check(fields[i].seen, what);
     }
+
+    printf("gpu layout: every dialect shadows every shape\n");
+    check_occluders("shaders/trace.glsl");
+    check_occluders("shaders/trace.hlsl");
+    check_occluders("shaders/trace.metal");
 
     return report();
 }

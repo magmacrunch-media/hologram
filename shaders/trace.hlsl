@@ -258,7 +258,8 @@ bool nearest_hit(float3 ro, float3 rd,
     return found;
 }
 
-/* sun_blocked: opaque spheres or panels between the point and the sun.
+/* sun_blocked: opaque spheres, panels or dishes between the point and the
+   sun.
    Mostly-clear glass throws no hard shadow (caustics are M8's problem). */
 bool sun_blocked(float3 p) {
     float t; float3 n;
@@ -273,6 +274,14 @@ bool sun_blocked(float3 p) {
         if (rect_glass[j].x <= 0.5 && rect_filter[j].x < 0.5 &&
             ray_rect(p, sun_dir, rect_corner_mirror[j].xyz,
                      rect_solve_u[j].xyz, rect_solve_v[j].xyz, t, n)) {
+            return true;
+        }
+    }
+    /* A dish is mirror or matte, never glass: it always blocks. */
+    for (int k = 0; k < (int)dish_rim_count[0].y; k++) {
+        if (ray_dish(p, sun_dir, dish_apex_r[k].xyz, dish_axis_k[k].xyz,
+                     dish_apex_r[k].w, dish_axis_k[k].w,
+                     dish_rim_count[k].x, t, n)) {
             return true;
         }
     }
