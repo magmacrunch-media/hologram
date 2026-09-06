@@ -90,6 +90,10 @@ for e in m7_room m8_furnace m9_spectrum; do
     build_example "$e" source/oracle.c source/input.c
 done
 
+# shadows is not a milestone -- see its header. Same shape as the
+# m2..m6 group: display and oracle, no input.
+build_example shadows source/oracle.c
+
 # tools/bench: GPU cost per panel. It has a real GPU clock only on
 # D3D11; elsewhere it falls back to the frame clock and says so.
 # shellcheck disable=SC2086

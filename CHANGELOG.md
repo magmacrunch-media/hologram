@@ -337,6 +337,29 @@ Dishes throw shadows.
   under the bowl, full sun five meters out past a rim of two. Note the
   shadow ray still crosses the paraboloid's surface out there; it is the
   rim clip, not a miss, that lets the light by.
+- And `examples/shadows`, the frame that would have caught it. Not a
+  milestone -- those are m0 through m9 -- but a row in the pass table
+  whose only job is to make one duplicated decision visible: a dish, a
+  matte sphere and an opaque panel casting, a glass ball casting
+  nothing, all with the sun behind them so no shadow hides under the
+  thing that threw it. Intact it reports 0.0070/255 and 0.021%; with
+  the dish loop deleted from a dialect, 1.2491 and 2.984%, over both
+  bars. m8_furnace moved by 0.01 and passed.
+- Measuring it turned up a second divergence, unrelated and older. In
+  the RGB walk the two GPU dialects draw a polarizer BLACK where
+  cpu_trace.c draws it at 50%: standing one in this scene costs 0.841%
+  of pixels and fails the diff. `m6_polarization` cannot see it,
+  because it diffs with spectral = 1 and the flat-50% approximation
+  only exists in the RGB path -- so no frame has ever put an RGB-path
+  polarizer in front of the oracle. Recorded, not yet fixed; the
+  polarizer is left out of `shadows` so the example fails for shadow
+  reasons or not at all.
+- `m8_furnace` moves in all three columns of the pass table now that
+  its dishes shade the floor: 0.0185 -> 0.0191 on D3D11, 0.0015 ->
+  0.0016 on Linux GL, 0.0266 -> 0.0283 on WebGL2. The GL column was
+  re-measured under Mesa's software rasteriser the way it was taken
+  originally; m7_room reproduced its recorded numbers exactly, which is
+  what says the setup was the same one.
 
 The game release: whatever Crystal Mirror Maze development asks of the
 engine lands here.

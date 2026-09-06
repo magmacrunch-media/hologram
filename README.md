@@ -56,7 +56,8 @@ recompiling.
 
 ## The examples
 
-Each milestone left a runnable demo behind. Every GPU example accepts
+Each milestone left a runnable demo behind, and `shadows` was added
+afterwards to cover something none of them did. Every GPU example accepts
 `--diff`, which renders the same frame through the CPU tracer and compares
 (see [The oracle](#the-oracle) below); the exit code is the verdict. They also
 accept `--dump`, which writes that comparison's inputs out for `tools/gldiff`.
@@ -73,6 +74,7 @@ accept `--dump`, which writes that comparison's inputs out for `tools/gldiff`.
 | `m7_room` | **The vertical slice:** a room of mirrors, glass, a polarizer and a flint ball that you walk through in first person. |
 | `m8_furnace` | A paraboloid with its focus at eye height on the path. Walk into it. |
 | `m9_spectrum` | Two ruled gratings throwing the sun's orders back at you. |
+| `shadows` | What blocks the sun and what deliberately does not: a dish, a matte sphere and an opaque panel casting, a glass ball casting nothing. |
 
 `m7_room`, `m8_furnace` and `m9_spectrum` are interactive: click to capture the
 mouse, `WASD` to walk, `Space` to jump, `T` to toggle spectral tracing, `Escape`
@@ -85,7 +87,7 @@ to release the mouse.
 - **C99 engine, one tracer in three dialects** (HLSL for D3D11, GLSL for GL
   and GLES3/WebGL2, MSL for Metal), on [sokol](https://github.com/floooh/sokol)
   (vendored, zlib licence) for the window, GPU device and swapchain. Windows
-  ships and Linux is proven -- all eight examples pass the oracle natively on
+  ships and Linux is proven -- all nine examples pass the oracle natively on
   GL as well as under D3D11 -- while the Metal dialect is written,
   type-checked, and has not yet met a Metal device.
 - **The tracing runs on the GPU** as a fullscreen-quad fragment shader over a
@@ -121,8 +123,17 @@ pixels off by more than 8/255. Every one passes.
 | `m5_spectral` | twelve wavelengths, Cauchy dispersion | 0.1183 · 0.503% | 0.0802 · 0.383% | 0.2512 · 0.498% |
 | `m6_polarization` | Stokes vectors, Mueller matrices, a waveplate | 0.0608 · 0.015% | 0.0015 · 0.009% | 0.0657 · 0.015% |
 | `m7_room` | all of the above at once, spectrally | 0.0834 · 0.230% | 0.0400 · 0.156% | 0.1976 · 0.236% |
-| `m8_furnace` | conic dishes, focusing at R/2 | 0.0185 · 0.022% | 0.0015 · 0.010% | 0.0266 · 0.022% |
+| `m8_furnace` | conic dishes, focusing at R/2 | 0.0191 · 0.022% | 0.0016 · 0.010% | 0.0283 · 0.022% |
 | `m9_spectrum` | gratings, conical orders | 0.0949 · 0.025% | 0.0026 · 0.010% | 0.0973 · 0.025% |
+| `shadows` | who casts one, and the two who do not | 0.0070 · 0.021% | 0.0066 · 0.115% | 0.0101 · 0.021% |
+
+`shadows` is the row to copy when a decision gets duplicated into the
+dialects: it exists because sun_blocked was stated four times and no frame
+made a wrong answer visible. Dishes were left out of it for a whole
+release, and `m8_furnace` -- the example with the dishes in it -- moved by
+0.01/255 and went on passing. Delete the same loop with `shadows` in front
+of the oracle and it reports 1.2491 · 2.984%, over both bars. A pass table
+is only worth the frames it puts under the light.
 
 The outlier percentages track each other across all three, which is the
 thing worth reading: it says every tracer takes the same branches and culls
