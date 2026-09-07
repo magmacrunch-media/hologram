@@ -78,4 +78,19 @@ for %%t in (tests\test_*.c) do (
         set FAILED=1
     )
 )
+
+rem The Metal dialect cannot be compiled here, but it can be type-checked:
+rem tools\metalcheck parses trace.metal as the C++14 it very nearly is, and
+rem cl is on PATH inside this script. Nothing else in the build reads that
+rem file, which is how it came to be the dialect nobody had checked.
+rem
+rem Exit 2 is "found no compiler, checked nothing" -- a skip, not a pass and
+rem not a failure. Only exit 1 means something is actually wrong. The gotos
+rem keep this out of a parenthesised block, where %FAILED% would expand at
+rem parse time and swallow the result.
+where python >nul 2>&1 || goto :done
+python tools\metalcheck\metalcheck.py
+if errorlevel 2 goto :done
+if errorlevel 1 set FAILED=1
+:done
 exit /b %FAILED%

@@ -2,7 +2,8 @@
 # hologram POSIX build: Linux (OpenGL) and macOS (Metal). On Windows use
 # build.bat -- MSVC is the supported toolchain there.
 #   ./build.sh        build the examples into build/
-#   ./build.sh test   build and run the host tests
+#   ./build.sh test   build and run the host tests, and type-check the
+#                     Metal dialect if a C++ compiler is around
 #
 # No library step and no package manager, matching build.bat: a game compiles
 # hologram's sources directly, magnolia-style.
@@ -62,6 +63,22 @@ if [ "${1:-}" = "test" ]; then
             failed=1
         fi
     done
+
+    # The Metal dialect cannot be compiled here, but it can be
+    # type-checked: tools/metalcheck parses trace.metal as the C++14 it
+    # very nearly is. Nothing else in the build reads that file, which is
+    # how it came to be the dialect nobody had checked.
+    #
+    # Exit 2 is "found no compiler, checked nothing" -- a skip, not a
+    # failure. The || rc=$? is needed because set -e is on and would
+    # otherwise abort the script on a skip.
+    if command -v python3 >/dev/null 2>&1; then
+        rc=0
+        python3 tools/metalcheck/metalcheck.py || rc=$?
+        if [ "$rc" = "1" ]; then
+            failed=1
+        fi
+    fi
     exit $failed
 fi
 

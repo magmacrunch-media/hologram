@@ -442,6 +442,14 @@ A polarizer renders, on Direct3D too.
   over on GL the moment a comment grew. The failure is a clean
   "shaders/trace.glsl does not fit in 32768 bytes", not a crash.
 
+- `metalcheck` runs as part of `test` in both build scripts. It always
+  could be run by hand and nothing ever did, which is why Metal was the
+  dialect that could break in silence -- nothing else in the build reads
+  `trace.metal`. On Windows `cl` is already on PATH inside build.bat and
+  type-checks the shader; on Linux clang does the shader and the
+  Objective-C readback both. No compiler is a skip, not a failure.
+  Mutation-tested in both directions on both scripts.
+
 The game release: whatever Crystal Mirror Maze development asks of the
 engine lands here.
 

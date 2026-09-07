@@ -201,6 +201,12 @@ lacks:
 python tools/metalcheck/metalcheck.py
 ```
 
+`build.bat test` and `./build.sh test` run it too, after the host tests. That
+matters more than it sounds: nothing else in the build reads `trace.metal`,
+so before this it was the one dialect a change could break in silence. A
+missing C++ compiler is reported as a skip and does not fail the build; only
+a real type error does.
+
 That validates names, arities, types, selectors and bridge casts -- it will
 catch a `params` argument dropped from one of the six functions that take
 one, or a misspelled Metal selector, which are the mistakes this port is

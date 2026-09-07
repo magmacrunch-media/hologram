@@ -446,6 +446,11 @@ float3 trace(constant float4 *params, float3 ro, float3 rd) {
                second fxc indexed-array defect here -- see the note on the
                grating slots in trace.hlsl for the first.
 
+               MSL never goes near fxc, so this file does not need the
+               workaround. It carries it anyway: these three are meant to
+               be the same statements, and a dialect that quietly drifts
+               is the thing the oracle exists to catch.
+
                Zeroing the material is what the `continue` was for: a black
                mirror leaves matte at zero, so no shadow ray is cast and
                nothing is added, and every push below is culled. */
