@@ -375,6 +375,24 @@
         invalidate();
     }
 
+    /* The selected primitive, outlined on the view. Updated from the
+       frame rather than from the selection, because it has to follow the
+       camera as well -- and a selection change invalidates a frame. */
+    function showSelBox(cam) {
+        var box = $('selbox');
+        var sel = state.bench ? state.bench.selection() : null;
+        var s = sel && root.pick.screenBox(state.doc, sel, cam);
+        if (!s) {
+            box.hidden = true;
+            return;
+        }
+        box.style.left = (100 * s.u0) + '%';
+        box.style.top = (100 * s.v0) + '%';
+        box.style.width = (100 * (s.u1 - s.u0)) + '%';
+        box.style.height = (100 * (s.v1 - s.v0)) + '%';
+        box.hidden = false;
+    }
+
     function frame(now) {
         pendingFrame = 0;
         if (!state.running) {
@@ -403,6 +421,7 @@
         }
 
         var basis = state.cam.basis(DESIGN_W / DESIGN_H);
+        showSelBox(basis);
         state.params = root.scene.pack(state.doc, basis, state.spectral);
         state.view.draw(state.params, now / 1000);
 
@@ -742,6 +761,10 @@
                 },
                 selected: function () {
                     if (state.sweep) { state.sweep.render(); }
+                    /* The outline is drawn from the frame, so a
+                       selection made while the camera is still needs to
+                       ask for one. */
+                    invalidate();
                 },
                 /* The walk world rides the same undo stack; see bench.js. */
                 extra: {

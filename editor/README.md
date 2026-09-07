@@ -217,6 +217,35 @@ level view runs parallel to it, and a view angled slightly up puts it
 objects in most rooms. Both show up as no intersection, so both fall back to
 a plane facing the camera, which always has one.
 
+### The selection is outlined, and the outline is not the probe
+
+What is selected gets a dashed cyan rectangle on the view: the bounding
+box of the primitive, projected. `core/pick.js` grows a `project()` that
+is `cameraRay` read backwards, and it has to be exactly that -- an
+outline computed a different way lands somewhere the picker disagrees
+with, and then clicking a thing highlights beside it. Round-tripping 363
+points through `cameraRay` and back through `project` disagrees by 6e-7
+of a frame, which is float32 and nothing else.
+
+The box is drawn from the primitive's extent -- a sphere's axis-aligned
+box, a rect's four corners, a dish's apex and the ring of its rim at the
+cap's sag. So a sphere's outline is a little looser than its silhouette,
+which is what a bounding box is; it is not the projection missing.
+
+It disappears when any corner of that extent is behind the eye. The
+projection has no finite answer there, and a box built from the corners
+that happen to be in front is not a smaller truth: stand inside a room,
+select the wall behind you, and it would draw a tidy rectangle off to one
+side of a wall filling the screen. Nothing reads as "cannot say"; a
+confident wrong box reads as a bug in the picker.
+
+The **yellow** rectangle is a different thing entirely -- the sweep's
+probe, the patch of frame it measures, which sits at the centre by
+default and appears whenever a primitive is selected because that is when
+a sweep becomes possible. The two colours are deliberate. Reading the
+probe as a selection outline costs an afternoon, which is how this
+section came to be written.
+
 ### Picking is a copy of the engine, and it is checked
 
 Answering "what is under this pixel" means intersecting the scene, and the

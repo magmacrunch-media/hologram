@@ -219,10 +219,109 @@
         };
     }
 
+
+    /* ---- where a thing lands on the frame ------------------------------ *
+     *
+     * The inverse of cameraRay above. Not a twin of engine code -- the
+     * engine only ever casts rays, it never projects -- but it has to agree
+     * with cameraRay or the outline sits where the object is not, so it is
+     * written as that function read backwards rather than derived afresh.
+     *
+     *     x = (u * 2 - 1) * tan_half_fov * aspect,  x = dot(d, right) / z
+     *     y = (1 - v * 2) * tan_half_fov,           y = dot(d, up) / z
+     */
+    function project(cam, p) {
+        var d = L.sub(p, cam.pos);
+        var z = L.dot(d, cam.forward);
+        if (z <= 1e-6) {
+            return null;          /* behind the eye: no answer, not a big one */
+        }
+        return {
+            u: (L.dot(d, cam.right) / (z * cam.tan_half_fov * cam.aspect) + 1) * 0.5,
+            v: (1 - L.dot(d, cam.up) / (z * cam.tan_half_fov)) * 0.5
+        };
+    }
+
+    /* Points that bound the primitive: a sphere's AABB, a rect's four
+       corners, a dish's apex and the ring of its rim. The dish's rim sits at
+       the cap's sag, which is the same z_max rayDish clips to -- a ring
+       drawn at the apex plane would sit inside a deep bowl. */
+    function hullOf(doc, sel) {
+        var pts = [], i, o;
+        if (!sel || !doc) {
+            return pts;
+        }
+        if (sel.list === 'spheres' && doc.spheres && doc.spheres[sel.index]) {
+            o = doc.spheres[sel.index];
+            var c = L.fromArray(o.center), r = o.radius || 0;
+            for (i = 0; i < 8; i++) {
+                pts.push(L.v3(c.x + ((i & 1) ? r : -r),
+                              c.y + ((i & 2) ? r : -r),
+                              c.z + ((i & 4) ? r : -r)));
+            }
+        } else if (sel.list === 'rects' && doc.rects && doc.rects[sel.index]) {
+            o = doc.rects[sel.index];
+            var k = L.fromArray(o.corner);
+            var eu = L.fromArray(o.edge_u), ev = L.fromArray(o.edge_v);
+            pts.push(k, L.add(k, eu), L.add(k, ev), L.add(k, L.add(eu, ev)));
+        } else if (sel.list === 'dishes' && doc.dishes && doc.dishes[sel.index]) {
+            o = doc.dishes[sel.index];
+            var apex = L.fromArray(o.apex), axis = L.norm(L.fromArray(o.axis));
+            var rim = o.rim || 0, R = o.curv_r || 1, K = o.conic_k || 0;
+            var rr = rim * rim;
+            var disc = 1 - (1 + K) * rr / (R * R);
+            var sag = rr / (R * (1 + Math.sqrt(disc > 0 ? disc : 0)));
+            var b = basis(axis);
+            var lip = L.add(apex, L.scale(axis, sag));
+            pts.push(apex);
+            for (i = 0; i < 12; i++) {
+                var a = i * Math.PI / 6;
+                pts.push(L.add(lip, L.add(L.scale(b.u, rim * Math.cos(a)),
+                                          L.scale(b.v, rim * Math.sin(a)))));
+            }
+        }
+        return pts;
+    }
+
+    /* The selection's bounding rectangle on the frame, as fractions of width
+       and height, or null for "do not draw one".
+
+       Null when ANY bounding point is behind the eye. The projection has no
+       finite answer there, and a box built from the points that happen to be
+       in front is not a smaller truth -- stand inside a room and select the
+       wall behind you and it would draw a neat little rectangle off to one
+       side of a wall that fills the screen. A missing outline reads as
+       "cannot say"; a confident wrong one reads as a bug in the picker. */
+    function screenBox(doc, sel, cam) {
+        var pts = hullOf(doc, sel);
+        if (!pts.length) {
+            return null;
+        }
+        var u0 = 2, v0 = 2, u1 = -1, v1 = -1;
+        for (var i = 0; i < pts.length; i++) {
+            var s = project(cam, pts[i]);
+            if (!s) {
+                return null;
+            }
+            if (s.u < u0) { u0 = s.u; }
+            if (s.u > u1) { u1 = s.u; }
+            if (s.v < v0) { v0 = s.v; }
+            if (s.v > v1) { v1 = s.v; }
+        }
+        /* Entirely off to one side: nothing to point at. */
+        if (u1 <= 0 || u0 >= 1 || v1 <= 0 || v0 >= 1) {
+            return null;
+        }
+        return {
+            u0: Math.max(u0, 0), v0: Math.max(v0, 0),
+            u1: Math.min(u1, 1), v1: Math.min(v1, 1)
+        };
+    }
+
     root.pick = {
         NONE: NONE, SPHERE: SPHERE, RECT: RECT, DISH: DISH, FLOOR: FLOOR,
         pick: pick, cameraRay: cameraRay, conformance: conformance,
         raySphere: raySphere, rayRect: rayRect, rayDish: rayDish,
-        rayPlane: rayPlane
+        rayPlane: rayPlane, project: project, screenBox: screenBox
     };
 }(window.Hologram = window.Hologram || {}));

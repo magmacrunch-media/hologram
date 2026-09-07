@@ -68,6 +68,16 @@ canvas {
 /* ---- the probe, and the sweep it feeds -------------------------------- */
 
 .stage { position: relative; line-height: 0; }
+/* The selection outline. Deliberately not the probe's yellow: the two
+   are both rectangles over the view and mean entirely different things,
+   and reading one as the other wastes an afternoon. */
+.selbox[hidden] { display: none; }
+.selbox {
+  position: absolute; pointer-events: none;
+  outline: 1px dashed #6fd3ff; outline-offset: 0;
+  box-shadow: 0 0 0 1px #0006;
+}
+
 .probe[hidden] { display: none; }
 .probe {
   position: absolute; pointer-events: none;
