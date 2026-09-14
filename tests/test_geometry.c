@@ -232,6 +232,232 @@ static void test_rect_basis(void) {
     }
 }
 
+static void test_fresnel_tilt(void) {
+    printf("geometry: a Fresnel ring's tilt is the prism equation, solved\n");
+    /* f = 0.7 m, n = 1.5. The tilt returned must satisfy the equation it
+       claims to solve, arcsin(n sin a) - a = atan(r/f), at every radius: a
+       wrong branch or a dropped term shows up as a deviation that is not
+       the one asked for. */
+    float f = 0.7f, n = 1.5f;
+    float ratios[] = { 0.1f, 0.3f, 0.6f, 1.0f };
+    for (int i = 0; i < 4; i++) {
+        float r = ratios[i] * f;
+        float a = holo_fresnel_tilt(r, f, n);
+        float dev = asinf(n * sinf(a)) - a;
+        check_close(dev, atanf(r / f), "deviation is atan(r/f)");
+    }
+
+    /* On the axis there is nothing to deviate and the facet is flat. */
+    check_close(holo_fresnel_tilt(0.0f, f, n), 0.0f, "axial ring is flat");
+
+    /* r << f is the thin prism of every optics course, delta = (n - 1) A,
+       so A = (r/f)/(n-1). */
+    float r_thin = 0.001f * f;
+    check_close(holo_fresnel_tilt(r_thin, f, n), (r_thin / f) / (n - 1.0f),
+                "thin-prism limit");
+}
+
+static void test_fresnel_tilt_critical(void) {
+    printf("geometry: the outermost usable ring is at the critical angle\n");
+    /* The tilt grows with radius until n sin a = 1 -- the exit ray grazes
+       the facet -- and that happens at exactly r = f sqrt(n^2 - 1). For
+       n = 1.5 the angle there is asin(1/1.5) = 41.81 degrees, the same
+       number test_linalg pins for total internal reflection: the lens's
+       design limit and Snell's limit are one fact. */
+    float f = 0.7f, n = 1.5f;
+    float r_max = f * sqrtf(n * n - 1.0f);
+    float a = holo_fresnel_tilt(r_max, f, n);
+    check_close(a, asinf(1.0f / n), "tilt at r_max is the critical angle");
+    check_close(a, 41.8103f * 3.14159265f / 180.0f, "which is 41.81 degrees");
+    check_close(n * sinf(a), 1.0f, "and the exit ray grazes");
+
+    /* Just inside the limit the ring still transmits: n sin a < 1. */
+    check(n * sinf(holo_fresnel_tilt(0.9f * r_max, f, n)) < 1.0f,
+          "inside the limit the facet still transmits");
+}
+
+/* The lens the Fresnel tests share: f = 0.7 m, n = 1.5, rings 30 mm wide
+   out to 0.6 m -- inside f sqrt(n^2 - 1) = 0.78 m, so every ring
+   transmits -- in 50 mm of slab, which clears the deepest groove at 26 mm.
+   Twenty rings; ring k peaks at 0.03 k. */
+#define LENS_F 0.7f
+#define LENS_N 1.5f
+#define LENS_PITCH 0.03f
+#define LENS_RIM 0.6f
+#define LENS_THICK 0.05f
+
+static int lens_hit(HoloRay r, HoloHit *h) {
+    return holo_ray_fresnel(r, hv3(0, 0, 0), hv3(0, 0, 1), LENS_F, LENS_N,
+                            0.0f, LENS_PITCH, LENS_RIM, LENS_THICK, h);
+}
+
+static float ring_tilt(int k) {
+    return holo_fresnel_tilt((float)k * LENS_PITCH, LENS_F, LENS_N);
+}
+
+static void test_fresnel_sag_and_normal(void) {
+    printf("geometry: a Fresnel facet sags at its tilt and faces at it\n");
+    /* Straight down onto the middle of ring 5: the facet peaks at 0.15 on
+       z = 0 and descends at tan(a5), so 15 mm further out it sits at
+       -0.015 tan(a5), and the normal is the axis leaned outward by a5. */
+    float a5 = ring_tilt(5);
+    HoloRay r = { .origin = hv3(0.165f, 0, 1), .dir = hv3(0, 0, -1) };
+    HoloHit h;
+    check_int(lens_hit(r, &h), 1, "lands on ring 5");
+    check_close(h.point.z, -0.015f * tanf(a5), "at the facet's sag");
+    check_close(h.normal.z, cosf(a5), "normal leans by the tilt");
+    check_close(h.normal.x, sinf(a5), "outward, radially");
+    check_close(h.normal.y, 0.0f, "and nowhere else");
+
+    /* Ring 12, near its outer edge: steeper, deeper. */
+    float a12 = ring_tilt(12);
+    r.origin = hv3(0.385f, 0, 1);
+    check_int(lens_hit(r, &h), 1, "lands on ring 12");
+    check_close(h.point.z, -0.025f * tanf(a12), "at ring 12's sag");
+    check_close(h.normal.z, cosf(a12), "and ring 12's tilt");
+
+    /* The central disc, whose tilt is zero, is flat and faces the axis. */
+    r.origin = hv3(0.01f, 0, 1);
+    check_int(lens_hit(r, &h), 1, "lands on the centre");
+    check_close(h.point.z, 0.0f, "which is flat");
+    check_close(h.normal.z, 1.0f, "and faces straight up");
+}
+
+static void test_fresnel_collimates(void) {
+    printf("geometry: from the focus, a ring's facet sends light down the axis\n");
+    /* A ring's tilt is designed at its peak radius r_k, so a ray from the
+       focus meeting the facet just outside the peak must refract to run
+       along the axis inside the glass -- the lighthouse, run backwards
+       from the lamp. Just outside rather than at the peak, because the
+       peak is the corner the previous riser shares. The 1.5 mm offset
+       misses exact by the ring's own angular width, which the checks
+       allow for and no more. */
+    int ks[] = { 3, 5, 12 };
+    HoloV3 focus = hv3(0, 0, LENS_F), axis = hv3(0, 0, 1);
+    float off = 0.05f * LENS_PITCH;
+    for (int i = 0; i < 3; i++) {
+        float rk = (float)ks[i] * LENS_PITCH;
+        float a = ring_tilt(ks[i]);
+        HoloV3 target = hv3(rk + off, 0, -off * tanf(a));
+        HoloRay r = { .origin = focus, .dir = hv3_norm(hv3_sub(target, focus)) };
+        HoloHit h;
+        check_int(lens_hit(r, &h), 1, "the ray from the focus lands");
+        check_close(h.point.x, rk + off, "on the ring it was aimed at");
+        HoloV3 in;
+        check_int(hv3_refract(r.dir, h.normal, 1.0f / LENS_N, &in), 1,
+                  "and refracts in");
+        check_close(hv3_dot(in, axis), -1.0f, "running down the axis");
+        HoloV3 perp = hv3_sub(in, hv3_scale(axis, hv3_dot(in, axis)));
+        check(hv3_len(perp) < 2.0f * off / LENS_F,
+              "to within the ring's angular width");
+    }
+
+    /* The same facet from the wrong distance does not: a lens has one
+       focus, and the tilts are a statement about where it is. */
+    float a5 = ring_tilt(5);
+    HoloV3 target = hv3(5 * LENS_PITCH + off, 0, -off * tanf(a5));
+    HoloV3 wrong = hv3(0, 0, 1.5f * LENS_F);
+    HoloRay r = { .origin = wrong, .dir = hv3_norm(hv3_sub(target, wrong)) };
+    HoloHit h;
+    check_int(lens_hit(r, &h), 1, "lands from the wrong focus too");
+    HoloV3 in;
+    hv3_refract(r.dir, h.normal, 1.0f / LENS_N, &in);
+    HoloV3 perp = hv3_sub(in, hv3_scale(axis, hv3_dot(in, axis)));
+    check(hv3_len(perp) > 0.01f, "but does not run down the axis");
+}
+
+static void test_fresnel_oblique_skips_a_ring(void) {
+    printf("geometry: a ray inside the glass surfaces on a ring it did not start under\n");
+    /* From 40 mm down inside the slab, over ring 5, heading out and up at
+       45 degrees: it stays under ring 5's groove, passes beneath the riser
+       at 0.18, and surfaces through ring 6's facet near 0.195. The seed
+       says ring 5; the window is what finds ring 6. A single-ring lookup
+       would report a miss and leave the tracer's inside flag stranded. */
+    float a6 = ring_tilt(6);
+    HoloRay r = { .origin = hv3(0.165f, 0, -0.04f),
+                  .dir = hv3_norm(hv3(1, 0, 1)) };
+    HoloHit h;
+    check_int(lens_hit(r, &h), 1, "surfaces");
+    check(h.point.x > 0.18f && h.point.x < 0.21f, "through ring 6");
+    check_close(h.normal.z, -cosf(a6), "on ring 6's facet, from inside");
+    check_close(h.normal.x, -sinf(a6), "normal turned to meet the ray");
+}
+
+static void test_fresnel_walls_and_back(void) {
+    printf("geometry: the lens is a closed solid\n");
+    float a19 = ring_tilt(19);
+    HoloHit h;
+
+    /* From behind: the flat back face, facing the ray. */
+    HoloRay r = { .origin = hv3(0.2f, 0, -1), .dir = hv3(0, 0, 1) };
+    check_int(lens_hit(r, &h), 1, "the back face");
+    check_close(h.t, 1.0f - LENS_THICK, "at the slab's depth");
+    check_close(h.normal.z, -1.0f, "faces out the back");
+
+    /* From the side, low: the rim wall, radial normal. */
+    r.origin = hv3(2, 0, -0.045f);
+    r.dir = hv3(-1, 0, 0);
+    check_int(lens_hit(r, &h), 1, "the rim wall");
+    check_close(h.point.x, LENS_RIM, "at the rim");
+    check_close(h.normal.x, 1.0f, "radially out");
+
+    /* From the side, high: above where the last facet meets the rim there
+       is no wall, and the ray flies in over the groove to meet the facet
+       of ring 19 where it has risen to the ray's height. That is a ring
+       found from a side entry, seeded at the rim. */
+    r.origin = hv3(2, 0, -0.01f);
+    check_int(lens_hit(r, &h), 1, "over the wall onto the last facet");
+    check_close(h.point.x, 19 * LENS_PITCH + 0.01f / tanf(a19),
+                "where the facet reaches the ray's height");
+    check_close(h.normal.z, cosf(a19), "on ring 19's facet");
+
+    /* Past the rim, and receding from behind: nothing. */
+    r.origin = hv3(0.7f, 0, 1);
+    r.dir = hv3(0, 0, -1);
+    check_int(lens_hit(r, &h), 0, "past the rim misses");
+    r.origin = hv3(0.2f, 0, -1);
+    check_int(lens_hit(r, &h), 0, "receding misses");
+}
+
+static void test_fresnel_is_watertight(void) {
+    printf("geometry: every ray through the lens comes out again\n");
+    /* Straight down at 39 radii chosen to sit at least 7.5 mm from any
+       ring edge: each must meet exactly one facet and then the back face
+       -- two crossings, the second at the slab's depth. An odd count is a
+       hole in the solid, and the glass walk would never toggle back out. */
+    for (int i = 0; i < 39; i++) {
+        float rho = 0.0075f + 0.015f * (float)i;
+        HoloRay r = { .origin = hv3(rho, 0, 1), .dir = hv3(0, 0, -1) };
+        HoloHit h;
+        int crossings = 0;
+        float last_z = 1.0f;
+        while (crossings < 8 && lens_hit(r, &h)) {
+            crossings++;
+            last_z = h.point.z;
+            r.origin = h.point;
+        }
+        check_int(crossings, 2, "in through a facet, out through the back");
+        check_close(last_z, -LENS_THICK, "and the exit is the back face");
+    }
+}
+
+static void test_fresnel_tilted(void) {
+    printf("geometry: the lens frame is not the world frame\n");
+    /* The ring-5 sag test again, with the lens at (2,1,3) pointing along
+       +x: a ray coming back along -x at 0.165 off the axis must land at
+       the same sag, now measured along x, with the normal leaned toward
+       +y, which is outward here. */
+    float a5 = ring_tilt(5);
+    HoloRay r = { .origin = hv3(5, 1.165f, 3), .dir = hv3(-1, 0, 0) };
+    HoloHit h;
+    check_int(holo_ray_fresnel(r, hv3(2, 1, 3), hv3(1, 0, 0), LENS_F, LENS_N,
+                               0.0f, LENS_PITCH, LENS_RIM, LENS_THICK, &h),
+              1, "lands on the tilted lens");
+    check_close(h.point.x, 2.0f - 0.015f * tanf(a5), "at the sag, along x");
+    check_close(h.normal.x, cosf(a5), "normal along the axis by cos");
+    check_close(h.normal.y, sinf(a5), "and outward by sin");
+}
+
 int main(void) {
     test_sphere();
     test_plane();
@@ -240,5 +466,13 @@ int main(void) {
     test_dish_paraboloid();
     test_dish_ellipsoid();
     test_dish_tilted();
+    test_fresnel_tilt();
+    test_fresnel_tilt_critical();
+    test_fresnel_sag_and_normal();
+    test_fresnel_collimates();
+    test_fresnel_oblique_skips_a_ring();
+    test_fresnel_walls_and_back();
+    test_fresnel_is_watertight();
+    test_fresnel_tilted();
     return report();
 }

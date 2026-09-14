@@ -30,6 +30,9 @@
         if (kind === 'dish') {
             return { at: L.fromArray(o.apex), size: o.rim || 1 };
         }
+        if (kind === 'fresnel') {
+            return { at: L.fromArray(o.center), size: o.rim || 1 };
+        }
         var c = L.fromArray(o.corner);
         var u = L.fromArray(o.edge_u), v = L.fromArray(o.edge_v);
         return {
@@ -247,6 +250,8 @@
                     obj.center[1] = floorY + (obj.radius || 0);
                 } else if (spec.kind === 'dish') {
                     obj.apex[1] = floorY;
+                } else if (spec.kind === 'fresnel') {
+                    obj.center[1] = floorY;
                 } else {
                     /* A panel hangs from its corner, and its edges may run
                        either way -- drop whichever end is lower. */

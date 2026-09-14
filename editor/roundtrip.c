@@ -25,7 +25,8 @@
  *         source/timestep.c
  *     build\roundtrip.exe
  *
- * Last run: 856 of 856 floats identical (215 slots, dishes carrying glass).
+ * Last run: 876 of 876 floats identical (220 slots, the Fresnel lens's five
+ * appended after the gratings; before that 856 of 856 at 215).
  */
 #include <math.h>
 #include <stdio.h>

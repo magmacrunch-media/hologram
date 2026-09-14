@@ -47,6 +47,15 @@ cbuffer params : register(b0) {
     float4 grat1_groove_idx;
     float4 grat1_period_w;
     float4 grat_w2;           /* x slot0's +2 weight, y slot1's */
+
+    /* One Fresnel lens as scalar slots, for the budget rather than for fxc:
+       the block stood at 215 of the 224 float4 WebGL2 guarantees, and a
+       lens is five of the nine that were left. See gpu_scene.h. */
+    float4 fres_center_focal;  /* xyz center, w focal */
+    float4 fres_axis_r0;       /* xyz axis, w r0 */
+    float4 fres_albedo_mirror;
+    float4 fres_glass;         /* x transmit, y ior, z disperse, w thick */
+    float4 fres_ring;          /* x pitch, y rim, z lens count (0 or 1) */
 };
 
 static const float T_MIN = 1e-3;      /* HOLO_T_MIN */
@@ -56,6 +65,7 @@ static const int   MAX_RAYS = 32;     /* HOLO_MAX_RAYS */
 static const int   STACK = 16;        /* HOLO_STACK */
 static const float MIN_TP = 0.002;    /* HOLO_MIN_TP */
 static const int   WAVELENGTHS = 12;  /* HOLO_WAVELENGTHS */
+static const int   FRESNEL_WINDOW = 3; /* HOLO_FRESNEL_WINDOW */
 
 /* holo_albedo_at: an RGB color read at one wavelength through three smooth
    bands that partition unity -- neutral colors are exact. */
@@ -167,6 +177,158 @@ bool ray_dish(float3 ro, float3 rd, float3 apex, float3 axis,
     return false;
 }
 
+/* holo_fresnel_tilt: the facet tilt a Fresnel ring at radius r needs, the
+   exact solution of arcsin(n sin a) - a = atan(r / f). Ported statement for
+   statement; n is the design index, the D line, on purpose. */
+float fresnel_tilt(float r, float focal, float n_design) {
+    float h = sqrt(r * r + focal * focal);
+    return atan2(r, n_design * h - focal);
+}
+
+/* The pieces of holo_ray_fresnel, in the lens frame: each competes for the
+   nearest t through best / best_n and leaves them alone on a miss. */
+void fresnel_cylinder(float P0, float P1, float P2, float3 o, float3 d,
+                      float R, float z_lo, float z_hi,
+                      inout float best, inout float3 best_n) {
+    if (P2 < 1e-12) return;
+    float disc = P1 * P1 - P2 * (P0 - R * R);
+    if (disc < 0.0) return;
+    float sq = sqrt(disc);
+    for (int side = 0; side < 2; side++) {
+        float t = (side == 0 ? -P1 - sq : -P1 + sq) / P2;
+        float z = o.z + t * d.z;
+        if (t > T_MIN && t < best && z >= z_lo && z <= z_hi) {
+            best = t;
+            best_n = float3((o.x + t * d.x) / R, (o.y + t * d.y) / R, 0.0);
+        }
+    }
+}
+
+void fresnel_facet(float P0, float P1, float P2, float3 o, float3 d,
+                   float rk, float r_out, float s, float cs,
+                   inout float best, inout float3 best_n) {
+    float q0 = rk * s - o.z * cs;
+    float qd = -d.z * cs;
+    float A = s * s * P2 - qd * qd;
+    float B = s * s * P1 - q0 * qd;
+    float C = s * s * P0 - q0 * q0;
+    float t1, t2;
+    if (abs(A) < 1e-10) {
+        if (abs(B) < 1e-12) return;
+        t1 = -C / (2.0 * B);
+        t2 = -1.0;
+    } else {
+        float disc = B * B - A * C;
+        if (disc < 0.0) return;
+        float sq = sqrt(disc);
+        t1 = (-B - sq) / A;
+        t2 = (-B + sq) / A;
+    }
+    for (int side = 0; side < 2; side++) {
+        float t = side == 0 ? t1 : t2;
+        float x = o.x + t * d.x, y = o.y + t * d.y, z = o.z + t * d.z;
+        float rho = sqrt(x * x + y * y);
+        float q = rk * s - z * cs;
+        if (t > T_MIN && t < best && q > -1e-6 && rho >= rk && rho <= r_out) {
+            best = t;
+            float inv = rho > 1e-12 ? 1.0 / rho : 0.0;
+            best_n = float3(s * x * inv, s * y * inv, cs);
+        }
+    }
+}
+
+/* holo_ray_fresnel: a Fresnel lens as one primitive, its rings computed
+   from their index rather than stored. Ported statement for statement --
+   including the fixed window of rings, a loop of constant trip count with
+   no early exit, on purpose: that is the loop shape fxc has not
+   miscompiled in this file. */
+bool ray_fresnel(float3 ro, float3 rd, float3 center, float3 axis,
+                 float focal, float n_design, float r0, float pitch,
+                 float rim, float thick, out float t_out, out float3 normal) {
+    t_out = 0; normal = float3(0, 0, 0);
+    float3 helper = abs(axis.x) > 0.9 ? float3(0, 1, 0) : float3(1, 0, 0);
+    float3 u = normalize(cross(helper, axis));
+    float3 v = cross(axis, u);
+    float3 rel = ro - center;
+    float3 o = float3(dot(rel, u), dot(rel, v), dot(rel, axis));
+    float3 d = float3(dot(rd, u), dot(rd, v), dot(rd, axis));
+
+    float P2 = d.x * d.x + d.y * d.y;
+    float P1 = o.x * d.x + o.y * d.y;
+    float P0 = o.x * o.x + o.y * o.y;
+    float rr = rim * rim;
+
+    float lo = 0.0, hi = 1e30;
+    if (abs(d.z) < 1e-8) {
+        if (o.z < -thick || o.z > 0.0) return false;
+    } else {
+        float ta = (-thick - o.z) / d.z, tb = -o.z / d.z;
+        if (ta > tb) { float swap = ta; ta = tb; tb = swap; }
+        if (ta > lo) lo = ta;
+        if (tb < hi) hi = tb;
+    }
+    if (P2 < 1e-12) {
+        if (P0 > rr) return false;
+    } else {
+        float disc = P1 * P1 - P2 * (P0 - rr);
+        if (disc < 0.0) return false;
+        float sq = sqrt(disc);
+        float ta = (-P1 - sq) / P2, tb = (-P1 + sq) / P2;
+        if (ta > lo) lo = ta;
+        if (tb < hi) hi = tb;
+    }
+    if (hi < lo || hi <= T_MIN) return false;
+
+    int rings = (int)ceil((rim - r0) / pitch - 1e-4);
+    if (rings < 1) return false;
+
+    float best = 1e30;
+    float3 best_n = float3(0, 0, 1);
+
+    if (abs(d.z) > 1e-8) {
+        float t = (-thick - o.z) / d.z;
+        float q = P0 + 2.0 * P1 * t + P2 * t * t;
+        if (t > T_MIN && q <= rr && q >= r0 * r0) {
+            best = t;
+            best_n = float3(0, 0, -1);
+        }
+    }
+    {
+        float rk = r0 + (float)(rings - 1) * pitch;
+        float a = fresnel_tilt(rk, focal, n_design);
+        float top = -(rim - rk) * tan(a);
+        fresnel_cylinder(P0, P1, P2, o, d, rim, -thick, top, best, best_n);
+        if (r0 > 0.0) {
+            fresnel_cylinder(P0, P1, P2, o, d, r0, -thick, 0.0, best, best_n);
+        }
+    }
+    float rho_seed = sqrt(P0 + 2.0 * P1 * lo + P2 * lo * lo);
+    int k_seed = (int)floor((rho_seed - r0) / pitch);
+    if (k_seed < 0) k_seed = 0;
+    if (k_seed > rings - 1) k_seed = rings - 1;
+    [loop] for (int i = -FRESNEL_WINDOW; i <= FRESNEL_WINDOW; i++) {
+        int k = k_seed + i;
+        if (k >= 0 && k < rings) {
+            float rk = r0 + (float)k * pitch;
+            float r_out = rk + pitch < rim ? rk + pitch : rim;
+            float a = fresnel_tilt(rk, focal, n_design);
+            float s = sin(a), cs = cos(a);
+            fresnel_facet(P0, P1, P2, o, d, rk, r_out, s, cs, best, best_n);
+            if (k < rings - 1) {
+                float depth = pitch * s / cs;
+                fresnel_cylinder(P0, P1, P2, o, d, rk + pitch, -depth, 0.0,
+                                 best, best_n);
+            }
+        }
+    }
+
+    if (best >= 1e29) return false;
+    t_out = best;
+    float3 n = u * best_n.x + v * best_n.y + axis * best_n.z;
+    normal = dot(n, rd) < 0.0 ? n : -n;
+    return true;
+}
+
 /* holo_ray_plane, for the y-up floor only (all any scene has). */
 bool ray_floor(float3 ro, float3 rd, out float t) {
     t = 0;
@@ -175,10 +337,21 @@ bool ray_floor(float3 ro, float3 rd, out float t) {
     return t > T_MIN;
 }
 
-/* holo_fresnel: the real equations, s and p separately. */
+/* holo_fresnel: the real equations, s and p separately.
+
+   `precise` on the TIR decision, here and in fresnel_amp and on the
+   refract discriminants in both walks. fxc at optimisation level 3
+   contracts and reassociates these, and a ray within float noise of the
+   critical angle then lands on the other side of it from the CPU -- which
+   is a coin flip between "escapes" and "trapped", not a rounding error.
+   A Fresnel lens seen from its focus is nothing but such rays at its
+   risers, and examples/fresnel went from 1.9% outliers on D3D11 to Mesa's
+   0.01% with optimisation off. This keeps the optimisation and pins the
+   four values that decide. Mesa and ANGLE did not need it; this dialect
+   does, like [loop] and the filter branch's missing `continue`. */
 void fresnel(float cos_i, float n1, float n2, out float rs, out float rp) {
-    float sin_i = sqrt(1.0 - cos_i * cos_i);
-    float sin_t = (n1 / n2) * sin_i;
+    precise float sin_i = sqrt(1.0 - cos_i * cos_i);
+    precise float sin_t = (n1 / n2) * sin_i;
     if (sin_t >= 1.0) {
         rs = 1.0; rp = 1.0;
         return;
@@ -251,6 +424,22 @@ bool nearest_hit(float3 ro, float3 rd,
             rect_id = -1;
         }
     }
+    if (fres_ring.z > 0.5 &&
+        ray_fresnel(ro, rd, fres_center_focal.xyz, fres_axis_r0.xyz,
+                    fres_center_focal.w, fres_glass.y, fres_axis_r0.w,
+                    fres_ring.x, fres_ring.y, fres_glass.w, t, n) &&
+        t < best_t) {
+        best_t = t; best_n = n;
+        albedo = fres_albedo_mirror.xyz;
+        mirror = fres_albedo_mirror.w;
+        transmit = fres_glass.x;
+        ior = fres_glass.y;
+        disperse = fres_glass.z;
+        /* A volume, as a dish's glass is: facet in, slab, back face out. */
+        volume = fres_glass.x > 0.0;
+        found = true;
+        rect_id = -1;
+    }
     if (has_floor > 0.5 && ray_floor(ro, rd, t) && t < best_t) {
         best_t = t;
         best_n = float3(0, rd.y < 0.0 ? 1 : -1, 0);
@@ -293,6 +482,13 @@ bool sun_blocked(float3 p) {
                      dish_rim_count[k].x, t, n)) {
             return true;
         }
+    }
+    /* And a Fresnel lens, by the same rule and for the same reason. */
+    if (fres_ring.z > 0.5 && fres_glass.x <= 0.5 &&
+        ray_fresnel(p, sun_dir, fres_center_focal.xyz, fres_axis_r0.xyz,
+                    fres_center_focal.w, fres_glass.y, fres_axis_r0.w,
+                    fres_ring.x, fres_ring.y, fres_glass.w, t, n)) {
+        return true;
     }
     return false;
 }
@@ -409,7 +605,7 @@ float3 trace(float3 ro, float3 rd) {
                            critical angle Fresnel can say "not TIR" while
                            this discriminant disagrees. */
                         float eta = n1 / n2;
-                        float k = 1.0 - eta * eta * (1.0 - cos_i * cos_i);
+                        precise float k = 1.0 - eta * eta * (1.0 - cos_i * cos_i);
                         refracted = k >= 0.0;
                         st_rd[sp] = eta * p_rd
                                   - (eta * -cos_i + sqrt(max(k, 0.0))) * best_n;
@@ -489,8 +685,8 @@ void frame_rot(float3 frame, float3 target, float3 dir,
 bool fresnel_amp(float cos_i, float n1, float n2,
                  out float rs, out float rp, out float ts, out float tp,
                  out float f, out float delta) {
-    float sin_i2 = 1.0 - cos_i * cos_i;
-    float sin_t = (n1 / n2) * sqrt(sin_i2);
+    precise float sin_i2 = 1.0 - cos_i * cos_i;
+    precise float sin_t = (n1 / n2) * sqrt(sin_i2);
     if (sin_t >= 1.0) {
         float n = n2 / n1;
         float g = sqrt(sin_i2 - n * n);
@@ -675,8 +871,8 @@ float trace_lambda(float3 ro, float3 rd, float lambda_um) {
                                the critical angle Fresnel can say "not TIR"
                                while this discriminant disagrees. */
                             float eta = n1 / n2;
-                            float kk = 1.0 - eta * eta
-                                     * (1.0 - cos_i * cos_i);
+                            precise float kk = 1.0 - eta * eta
+                                             * (1.0 - cos_i * cos_i);
                             refracted = kk >= 0.0;
                             st_rd[sp] = eta * p_rd
                                       - (eta * -cos_i + sqrt(max(kk, 0.0)))

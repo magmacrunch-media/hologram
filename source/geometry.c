@@ -157,6 +157,213 @@ int holo_ray_dish(HoloRay r, HoloV3 apex, HoloV3 axis,
     return 0;
 }
 
+float holo_fresnel_tilt(float r, float focal, float n_design) {
+    /* tan a = sin d / (n - cos d), with sin d = r/h and cos d = f/h for h
+       the hypotenuse of (r, f): the h cancels into atan2(r, n h - f). The
+       denominator is positive for any n > 1 since h >= f, so the angle
+       lands in [0, pi/2) and the axis itself reads as a flat facet. */
+    float h = sqrtf(r * r + focal * focal);
+    return atan2f(r, n_design * h - focal);
+}
+
+/* The pieces of a Fresnel lens, in its own frame (z along the axis, the
+   ring peaks on z = 0). Every one is a surface of revolution, so each takes
+   the ray's radial quadratic |xy(t)|^2 = P0 + 2 P1 t + P2 t^2 ready-made
+   and competes for the nearest t: the winner's t and local normal come
+   back through best and best_n, untouched on a miss. */
+
+/* A cylinder rho = R between two heights: a riser, or the rim wall. */
+static void fresnel_cylinder(float P0, float P1, float P2, HoloV3 o, HoloV3 d,
+                             float R, float z_lo, float z_hi,
+                             float *best, HoloV3 *best_n) {
+    if (P2 < 1e-12f) {
+        return;   /* along the axis: parallel to every cylinder */
+    }
+    float disc = P1 * P1 - P2 * (P0 - R * R);
+    if (disc < 0.0f) {
+        return;
+    }
+    float sq = sqrtf(disc);
+    for (int pass = 0; pass < 2; pass++) {
+        float t = (pass == 0 ? -P1 - sq : -P1 + sq) / P2;
+        float z = o.z + t * d.z;
+        if (t > HOLO_T_MIN && t < *best && z >= z_lo && z <= z_hi) {
+            *best = t;
+            *best_n = hv3((o.x + t * d.x) / R, (o.y + t * d.y) / R, 0.0f);
+        }
+    }
+}
+
+/* One ring's facet: the cone rho sin a + z cos a = r_k sin a, which has
+   its peak at (r_k, 0) and descends outward at tilt a. Squared for the
+   quadratic, s^2 |xy|^2 = q^2 with q = r_k s - z cos a, the mirror sheet
+   being q < 0. Clipped to the ring's span in radius, which is what decides
+   a corner between one ring and the next: the seed only says where to
+   look. At a = 0 the cone is the plane z = 0 and the algebra still holds,
+   which is how the central disc of a lens whose rings start on the axis
+   comes out flat without a special case. */
+static void fresnel_facet(float P0, float P1, float P2, HoloV3 o, HoloV3 d,
+                          float rk, float r_out, float s, float cs,
+                          float *best, HoloV3 *best_n) {
+    float q0 = rk * s - o.z * cs;
+    float qd = -d.z * cs;
+    float A = s * s * P2 - qd * qd;
+    float B = s * s * P1 - q0 * qd;
+    float C = s * s * P0 - q0 * q0;
+    float t1, t2;
+    if (fabsf(A) < 1e-10f) {
+        if (fabsf(B) < 1e-12f) {
+            return;
+        }
+        t1 = -C / (2.0f * B);
+        t2 = -1.0f;
+    } else {
+        float disc = B * B - A * C;
+        if (disc < 0.0f) {
+            return;
+        }
+        float sq = sqrtf(disc);
+        t1 = (-B - sq) / A;
+        t2 = (-B + sq) / A;
+    }
+    for (int pass = 0; pass < 2; pass++) {
+        float t = pass == 0 ? t1 : t2;
+        float x = o.x + t * d.x, y = o.y + t * d.y, z = o.z + t * d.z;
+        float rho = sqrtf(x * x + y * y);
+        float q = rk * s - z * cs;
+        /* The sheet test carries a hair of slack for the flat disc, where
+           q is exactly zero on the surface and float noise puts it either
+           side; the mirror sheet of a real cone sits at q = -rho s, far
+           beyond it. */
+        if (t > HOLO_T_MIN && t < *best && q > -1e-6f &&
+            rho >= rk && rho <= r_out) {
+            *best = t;
+            /* The gradient of rho sin a + z cos a is unit already and points
+               out of the glass. */
+            float inv = rho > 1e-12f ? 1.0f / rho : 0.0f;
+            *best_n = hv3(s * x * inv, s * y * inv, cs);
+        }
+    }
+}
+
+int holo_ray_fresnel(HoloRay r, HoloV3 center, HoloV3 axis,
+                     float focal, float n_design, float r0, float pitch,
+                     float rim, float thick, HoloHit *hit) {
+    HoloV3 u, v;
+    holo_basis(axis, &u, &v);
+    HoloV3 rel = hv3_sub(r.origin, center);
+    HoloV3 o = hv3(hv3_dot(rel, u), hv3_dot(rel, v), hv3_dot(rel, axis));
+    HoloV3 d = hv3(hv3_dot(r.dir, u), hv3_dot(r.dir, v), hv3_dot(r.dir, axis));
+
+    float P2 = d.x * d.x + d.y * d.y;
+    float P1 = o.x * d.x + o.y * d.y;
+    float P0 = o.x * o.x + o.y * o.y;
+    float rr = rim * rim;
+
+    /* The bounding volume: the slab -thick <= z <= 0 inside rho <= rim.
+       Most rays in a frame never enter it and are done here; the rest
+       leave with the t at which they do, which seeds the ring search. */
+    float lo = 0.0f, hi = 1e30f;
+    if (fabsf(d.z) < 1e-8f) {
+        if (o.z < -thick || o.z > 0.0f) {
+            return 0;
+        }
+    } else {
+        float ta = (-thick - o.z) / d.z, tb = -o.z / d.z;
+        if (ta > tb) {
+            float swap = ta;
+            ta = tb;
+            tb = swap;
+        }
+        if (ta > lo) lo = ta;
+        if (tb < hi) hi = tb;
+    }
+    if (P2 < 1e-12f) {
+        if (P0 > rr) {
+            return 0;
+        }
+    } else {
+        float disc = P1 * P1 - P2 * (P0 - rr);
+        if (disc < 0.0f) {
+            return 0;
+        }
+        float sq = sqrtf(disc);
+        float ta = (-P1 - sq) / P2, tb = (-P1 + sq) / P2;
+        if (ta > lo) lo = ta;
+        if (tb < hi) hi = tb;
+    }
+    if (hi < lo || hi <= HOLO_T_MIN) {
+        return 0;
+    }
+
+    /* A hair off the quotient so a rim that lands exactly on a ring edge
+       does not conjure a zero-width ring past it. */
+    int rings = (int)ceilf((rim - r0) / pitch - 1e-4f);
+    if (rings < 1) {
+        return 0;
+    }
+
+    float best = 1e30f;
+    HoloV3 best_n = hv3(0, 0, 1);
+
+    /* The back face: the plane z = -thick, an annulus from r0 to rim. */
+    if (fabsf(d.z) > 1e-8f) {
+        float t = (-thick - o.z) / d.z;
+        float q = P0 + 2.0f * P1 * t + P2 * t * t;
+        if (t > HOLO_T_MIN && q <= rr && q >= r0 * r0) {
+            best = t;
+            best_n = hv3(0, 0, -1);
+        }
+    }
+
+    /* The walls. The outer one runs from the back up to where the last
+       ring's facet meets the rim -- not to z = 0, or the wall would stand
+       proud of the glass in the groove it closes off. */
+    {
+        float rk = r0 + (float)(rings - 1) * pitch;
+        float a = holo_fresnel_tilt(rk, focal, n_design);
+        float top = -(rim - rk) * tanf(a);
+        fresnel_cylinder(P0, P1, P2, o, d, rim, -thick, top, &best, &best_n);
+        if (r0 > 0.0f) {
+            fresnel_cylinder(P0, P1, P2, o, d, r0, -thick, 0.0f, &best, &best_n);
+        }
+    }
+
+    /* The rings, a fixed window either side of the one the ray enters
+       the slab over. floor() seeds; each ring's own span decides. */
+    float rho_seed = sqrtf(P0 + 2.0f * P1 * lo + P2 * lo * lo);
+    int k_seed = (int)floorf((rho_seed - r0) / pitch);
+    if (k_seed < 0) k_seed = 0;
+    if (k_seed > rings - 1) k_seed = rings - 1;
+    for (int i = -HOLO_FRESNEL_WINDOW; i <= HOLO_FRESNEL_WINDOW; i++) {
+        int k = k_seed + i;
+        if (k >= 0 && k < rings) {
+            float rk = r0 + (float)k * pitch;
+            float r_out = rk + pitch < rim ? rk + pitch : rim;
+            float a = holo_fresnel_tilt(rk, focal, n_design);
+            float s = sinf(a), cs = cosf(a);
+            fresnel_facet(P0, P1, P2, o, d, rk, r_out, s, cs, &best, &best_n);
+            if (k < rings - 1) {
+                /* The riser at the outer edge, from this ring's valley up
+                   to the next ring's peak. */
+                float depth = pitch * s / cs;
+                fresnel_cylinder(P0, P1, P2, o, d, rk + pitch, -depth, 0.0f,
+                                 &best, &best_n);
+            }
+        }
+    }
+
+    if (best >= 1e29f) {
+        return 0;
+    }
+    hit->t = best;
+    hit->point = hv3_add(r.origin, hv3_scale(r.dir, best));
+    HoloV3 n = hv3_add(hv3_add(hv3_scale(u, best_n.x), hv3_scale(v, best_n.y)),
+                       hv3_scale(axis, best_n.z));
+    hit->normal = hv3_dot(n, r.dir) < 0.0f ? n : hv3_scale(n, -1.0f);
+    return 1;
+}
+
 int holo_ray_plane(HoloRay r, HoloV3 point, HoloV3 normal, HoloHit *hit) {
     float denom = hv3_dot(normal, r.dir);
     if (fabsf(denom) < 1e-8f) {

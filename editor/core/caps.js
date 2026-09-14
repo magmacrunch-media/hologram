@@ -20,6 +20,7 @@
         spheres: 8,
         rects: 24,
         dishes: 4,
+        fresnels: 1,
         gpu_gratings: 2,
         bounce: 16,
         rays: 32
@@ -29,6 +30,10 @@
         spheres: 'HOLO_MAX_SPHERES. Spheres past this are not traced at all.',
         rects: 'HOLO_MAX_RECTS. Panels past this are not traced at all.',
         dishes: 'HOLO_MAX_DISHES. Dishes past this are not traced at all.',
+        fresnels:
+            'HOLO_MAX_FRESNELS. One lens, in five scalar uniform slots: the ' +
+            'block sits at 220 of the 224 float4 WebGL2 guarantees a fragment ' +
+            'shader, and a second lens would not fit. Past this, not traced.',
         gpu_gratings:
             'Gratings live in two scalar uniform slots, not an array, because ' +
             'fxc corrupts a dynamically indexed one. A third grating renders ' +
@@ -64,6 +69,10 @@
             row('rects', rects.length, caps.rects),
             row('spheres', ((doc && doc.spheres) || []).length, caps.spheres),
             row('dishes', ((doc && doc.dishes) || []).length, caps.dishes),
+            /* A scene dumped before the lens existed carries no cap for it;
+               the fallback is the engine's. */
+            row('fresnels', ((doc && doc.fresnels) || []).length,
+                caps.fresnels === undefined ? DEFAULTS.fresnels : caps.fresnels),
             row('gpu_gratings', gratings, caps.gpu_gratings)
         ];
     }

@@ -19,7 +19,8 @@
  * same primitives.
  *
  * The traversal below mirrors cpu_trace.c's nearest_hit exactly, including
- * its order -- spheres, then rects, then dishes, then the floor -- and its
+ * its order -- spheres, then rects, then dishes, then the Fresnel lens, then
+ * the floor -- and its
  * strict `t < best`, which on an exact tie keeps whichever was found first.
  * That ordering is not arbitrary decoration: it decides the answer wherever
  * two surfaces meet, and a reader that walks them in another order disagrees
@@ -41,6 +42,9 @@
 #define HOLO_PICK_RECT   2
 #define HOLO_PICK_DISH   3
 #define HOLO_PICK_FLOOR  4
+/* Appended rather than slotted in before the floor, so that every pick
+   file written before the lens existed still reads the same. */
+#define HOLO_PICK_FRESNEL 5
 
 /* The grid is in camera uv rather than pixels, so the file does not depend
    on the window the dump happened to run in. */

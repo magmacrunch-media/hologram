@@ -152,6 +152,42 @@
         MIRROR
     ].concat(glassFields('dish'));
 
+    /* A Fresnel lens is its design: the rings are computed from these when
+       a ray arrives, which is why forty of them cost five uniform slots and
+       an inspector shows seven numbers. Help lifted from cpu_trace.h and
+       geometry.h, where the two limits a caller owes it are written down. */
+    var FRESNEL = [
+        { key: 'center', kind: 'vec3', unit: 'm',
+          help: 'On the axis, in the plane of the ring peaks.' },
+        { key: 'axis', kind: 'vec3', normalize: true,
+          help: 'Unit, out of the grooved face, toward the focus.' },
+        { key: 'focal', kind: 'float', min: 0.05, max: 20, step: 0.01,
+          unit: 'm', label: 'focal length',
+          help: 'The focus is center + focal * axis. Every ring is cut, at ' +
+                'ior, so a ray from there leaves parallel to the axis -- ' +
+                'and at any other wavelength it does not, which is the ' +
+                'chromatic aberration.' },
+        { key: 'r0', kind: 'float', min: 0, max: 5, step: 0.01, unit: 'm',
+          label: 'inner radius r0',
+          help: "The innermost ring's peak. 0 starts the rings on the axis " +
+                'with a flat central disc.' },
+        { key: 'pitch', kind: 'float', min: 0.005, max: 1, step: 0.005,
+          unit: 'm',
+          help: 'Ring width. Keep it well above 1 mm (HOLO_T_MIN), or a ray ' +
+                'refracting into a facet meets the riser inside the guard ' +
+                'and escapes through solid glass.' },
+        { key: 'rim', kind: 'float', min: 0.05, max: 20, step: 0.05, unit: 'm',
+          help: 'Outer radius. Keep it under focal * sqrt(ior^2 - 1): past ' +
+                "that a ring's tilt would exceed the critical angle and it " +
+                'silently stops collimating.' },
+        { key: 'thick', kind: 'float', min: 0.005, max: 2, step: 0.005,
+          unit: 'm', label: 'slab depth',
+          help: 'Back face to ring peaks. Must exceed the deepest groove, ' +
+                'pitch * tan(tilt) at the rim, or it cuts through the back.' },
+        ALBEDO,
+        MIRROR
+    ].concat(glassFields('fresnel'));
+
     /* Scene-level fields, in two groups, matching HoloScene's own ordering. */
     var FLOOR = [
         { key: 'has_floor', kind: 'bool' },
@@ -243,6 +279,11 @@
         dish: function () {
             return { apex: [0, 0, 0], axis: [0, 0, 1], curv_r: 4, conic_k: -1,
                      rim: 1, albedo: [0.9, 0.9, 0.9], mirror: 0.9 };
+        },
+        fresnel: function () {
+            return { center: [0, 1, 0], axis: [0, 0, 1], focal: 1, r0: 0,
+                     pitch: 0.05, rim: 0.5, thick: 0.05, albedo: [1, 1, 1],
+                     mirror: 0, transmit: 1, ior: 1.5, disperse: 0 };
         }
     };
 
@@ -252,7 +293,9 @@
         { key: 'rects', kind: 'rect', label: 'rect', cap: 'rects',
           fields: RECT },
         { key: 'dishes', kind: 'dish', label: 'dish', cap: 'dishes',
-          fields: DISH }
+          fields: DISH },
+        { key: 'fresnels', kind: 'fresnel', label: 'Fresnel lens',
+          cap: 'fresnels', fields: FRESNEL }
     ];
 
     /* A one-line description for the list, so a row says what it is without
@@ -275,7 +318,7 @@
     }
 
     root.schema = {
-        SPHERE: SPHERE, RECT: RECT, DISH: DISH,
+        SPHERE: SPHERE, RECT: RECT, DISH: DISH, FRESNEL: FRESNEL,
         FLOOR: FLOOR, SKY: SKY,
         WALL: WALL, WALK_WORLD: WALK_WORLD, MAX_WALLS: 24,
         LISTS: LISTS, DEFAULTS: DEFAULTS,

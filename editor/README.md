@@ -85,7 +85,7 @@ package manager and this page is not the reason to give it one.
 
 ## The bench
 
-Everything in the room is in one list — spheres, rects, dishes, and the two
+Everything in the room is in one list — spheres, rects, dishes, the Fresnel lens, and the two
 scene-level groups, the floor and the sky, which are selected and edited like
 anything else. Each row says what the thing *is* rather than what index it
 has: `mirror`, `glass n=1.62 dispersive`, `polarizer`, `grating 1.2um`. `+`
@@ -268,7 +268,7 @@ the oracle allows outliers: two implementations can legitimately land on
 opposite sides of an edge where surfaces meet at a grazing angle.
 
 The traversal order is load-bearing and copied deliberately. `cpu_trace.c`
-walks spheres, then rects, then dishes, then the floor, keeping a hit only on
+walks spheres, then rects, then dishes, then the Fresnel lens, then the floor, keeping a hit only on
 a strict `t < best` — so an exact tie goes to whichever was tested first.
 Where two surfaces touch, that decides the answer, and a picker walking them
 in a different order disagrees along every shared edge in the room.
@@ -633,7 +633,7 @@ published numbers.
 
 ## The budget panel
 
-24 rects, 8 spheres, 4 dishes — the fixed-size arrays in `cpu_trace.h`.
+24 rects, 8 spheres, 4 dishes, 1 Fresnel lens — the fixed-size arrays in `cpu_trace.h`.
 Nothing raises an error when a scene passes one; the primitive is simply not
 traced. crystal-mirror-maze's first hall is at 24 of 24, which is most of why
 this panel exists.

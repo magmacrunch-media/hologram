@@ -44,8 +44,13 @@
  * stack of glass does the work of a lens metres thick. There are four dish
  * slots. This is the single refracting element that fits inside them, which
  * is the honest half of the problem: it shows the dispersion, and it does
- * not show the rings. The rings need an annular-prism primitive that does
- * not exist yet, and with it, a cap raise.
+ * not show the rings.
+ *
+ * The rings are examples/fresnel now: HoloFresnel, the lens as ONE primitive
+ * whose ring tilts are computed from their radius rather than stored. This
+ * paragraph used to end "and with it, a cap raise", and it is kept because
+ * that half was wrong -- forty rings cost five uniform slots, not forty, and
+ * no cap moved. The frame beside this one puts the two lenses side by side.
  *
  *   build\lens.exe              look at it
  *   build\lens.exe --spectral   the same frame with wavelengths, which is

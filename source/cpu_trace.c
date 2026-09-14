@@ -79,6 +79,25 @@ static int nearest_hit(const HoloScene *scene, HoloRay ray, HoloHit *hit,
             found = 1;
         }
     }
+    for (int i = 0; i < scene->fresnel_count; i++) {
+        const HoloFresnel *f = &scene->fresnels[i];
+        if (holo_ray_fresnel(ray, f->center, f->axis, f->focal, f->ior,
+                             f->r0, f->pitch, f->rim, f->thick, &h) &&
+            h.t < best.t) {
+            best = h;
+            surf->albedo = f->albedo;
+            surf->mirror = f->mirror;
+            surf->transmit = f->transmit;
+            surf->ior = f->ior;
+            surf->disperse = f->disperse;
+            /* A volume, as a dish's glass is: facet in, slab, back face out. */
+            surf->volume = f->transmit > 0.0f;
+            surf->filter = HOLO_FILTER_NONE;
+            surf->rect = -1;
+            surf->grating = 0.0f;
+            found = 1;
+        }
+    }
     if (scene->has_floor &&
         holo_ray_plane(ray, hv3(0, scene->floor_y, 0), hv3(0, 1, 0), &h) &&
         h.t < best.t) {
@@ -134,6 +153,15 @@ static int sun_blocked(const HoloScene *scene, HoloV3 point) {
                           scene->dishes[i].axis, scene->dishes[i].curv_r,
                           scene->dishes[i].conic_k, scene->dishes[i].rim,
                           &h)) {
+            return 1;
+        }
+    }
+    /* And a Fresnel lens, by the same rule and for the same reason. */
+    for (int i = 0; i < scene->fresnel_count; i++) {
+        const HoloFresnel *f = &scene->fresnels[i];
+        if (f->transmit > 0.5f) continue;
+        if (holo_ray_fresnel(shadow, f->center, f->axis, f->focal, f->ior,
+                             f->r0, f->pitch, f->rim, f->thick, &h)) {
             return 1;
         }
     }

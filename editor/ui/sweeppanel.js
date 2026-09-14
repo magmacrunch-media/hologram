@@ -146,7 +146,7 @@
 
             if (!sel || sel.scene) {
                 host.appendChild(el('p', 'note',
-                    'Select a sphere, rect or dish to sweep one of its fields.'));
+                    'Select a sphere, rect, dish or Fresnel lens to sweep one of its fields.'));
                 overlay.hidden = true;
                 return;
             }

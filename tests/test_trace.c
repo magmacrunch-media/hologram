@@ -598,6 +598,191 @@ static void test_a_lens_is_not_a_stone(void) {
     check(lit > shaded * 1.5f, "glass lets the sun through and a mirror does not");
 }
 
+/* The Fresnel lens the tests below share, and the one geometry's tests use:
+   f = 0.7 m in n = 1.5 glass, twenty 30 mm rings out to 0.6 m in a 50 mm
+   slab, grooves toward +z and the focus at z = 0.7. */
+static HoloFresnel fresnel_lens(float ior_d, float cauchy_b) {
+    return (HoloFresnel){
+        .center = hv3(0, 0, 0), .axis = hv3(0, 0, 1),
+        .focal = 0.7f, .r0 = 0.0f, .pitch = 0.03f, .rim = 0.6f, .thick = 0.05f,
+        .albedo = hv3(1, 1, 1), .mirror = 0.0f,
+        .transmit = 1.0f, .ior = ior_d, .disperse = cauchy_b,
+    };
+}
+
+static void test_fresnel_collimates(void) {
+    printf("trace: from the focus, a Fresnel lens fills with sun -- exactly\n");
+    /* The lighthouse, run backwards from the lamp. A ray from the focus
+       through ring k refracts to run down the axis inside the slab, leaves
+       the flat back at normal incidence still parallel, and lands in a sun
+       disk a quarter of a degree wide. Unlike the dish lens, whose focal
+       length is emergent and is only bracketed, a Fresnel's rings were CUT
+       for this focus, so the reading is predicted to the last digit:
+       sun times the two Fresnel transmittances, the facet's at the angle
+       the geometry says the ray arrives at, the back's at normal incidence.
+
+       The sky is black on purpose. Every other branch -- the facet's
+       reflection, the slab's internal bounces -- ends somewhere that is not
+       the sun, so with no sky to bank it contributes nothing and the sum is
+       one term. That is what makes this exact rather than approximate. */
+    HoloScene s = {
+        .fresnels = { fresnel_lens(1.5f, 0.0f) },
+        .fresnel_count = 1,
+        .sun_dir = hv3(0, 0, -1),
+        .sun_disk_cos = 0.99999f,   /* a quarter of a degree */
+        .sun_disk_intensity = 25.0f,
+        .horizon = hv3(0, 0, 0), .zenith = hv3(0, 0, 0),
+    };
+    const HoloFresnel *f = &s.fresnels[0];
+    HoloV3 focus = hv3(0, 0, f->focal);
+    int ks[] = { 3, 5, 12 };
+    for (int i = 0; i < 3; i++) {
+        /* Just outside ring k's peak, where the tilt is exact for r_k and
+           the corner with the previous riser is not in question. */
+        float rk = (float)ks[i] * f->pitch, off = 0.05f * f->pitch;
+        float a = holo_fresnel_tilt(rk, f->focal, f->ior);
+        HoloV3 target = hv3(rk + off, 0, -off * tanf(a));
+        HoloRay r = { .origin = focus, .dir = hv3_norm(hv3_sub(target, focus)) };
+
+        /* What the geometry says about the arrival, independently of the
+           walk: the incidence angle at the facet fixes T there. */
+        HoloHit h;
+        check_int(holo_ray_fresnel(r, f->center, f->axis, f->focal, f->ior,
+                                   f->r0, f->pitch, f->rim, f->thick, &h),
+                  1, "the ray from the focus meets the facet");
+        float rs, rp;
+        holo_fresnel(-hv3_dot(h.normal, r.dir), 1.0f, f->ior, &rs, &rp);
+        float t_facet = 1.0f - 0.5f * (rs + rp);
+        float t_back = 1.0f - 0.04f;   /* n = 1.5 at normal incidence */
+        float want = 25.0f * t_facet * t_back;
+
+        check_close(holo_trace_lambda(&s, r, 0.55f), want,
+                    "the spectral walk reads sun times two transmittances");
+        check_close(holo_trace_ray(&s, r).x, want,
+                    "and so does the RGB walk");
+    }
+
+    /* Half a metre off the focus the same aim leaves the slab askew and
+       misses the disk: black sky through the glass. */
+    HoloV3 target = hv3(5 * f->pitch + 0.0015f, 0, -0.001f);
+    HoloRay r = { .origin = hv3(0, 0.5f, f->focal) };
+    r.dir = hv3_norm(hv3_sub(target, r.origin));
+    check_close(holo_trace_lambda(&s, r, 0.55f), 0.0f,
+                "off the focus, no sun through the lens");
+}
+
+static void test_fresnel_has_chromatic_aberration(void) {
+    printf("trace: a Fresnel cut for the D line misses at blue\n");
+    /* The rings are tilted for n at the D line. Trace flint at 450 nm and
+       n is 0.05 higher: the ray inside the slab leans 0.6 degrees off the
+       axis, and the flat back face makes that worse rather than better --
+       an internal lean of e leaves at n e, since Snell runs the other way
+       on the way out -- so it emerges a full degree off and misses a
+       half-degree sun disk. At 650 nm the lean is a quarter of blue's,
+       0.3 degrees on exit, and the disk still catches it. This is the
+       guard on the design index: compute the tilt with holo_ior_at(lambda)
+       instead of ior and every wavelength collimates perfectly, blue reads
+       full sun, and this fails. */
+    HoloScene s = {
+        .fresnels = { fresnel_lens(1.62f, 0.025f) },   /* dense flint */
+        .fresnel_count = 1,
+        .sun_dir = hv3(0, 0, -1),
+        .sun_disk_cos = 0.99995f,   /* half a degree */
+        .sun_disk_intensity = 25.0f,
+        .horizon = hv3(0, 0, 0), .zenith = hv3(0, 0, 0),
+    };
+    const HoloFresnel *f = &s.fresnels[0];
+    HoloV3 focus = hv3(0, 0, f->focal);
+    float rk = 5 * f->pitch, off = 0.02f * f->pitch;
+    float a = holo_fresnel_tilt(rk, f->focal, f->ior);
+    HoloV3 target = hv3(rk + off, 0, -off * tanf(a));
+    HoloRay r = { .origin = focus, .dir = hv3_norm(hv3_sub(target, focus)) };
+
+    float at_d = holo_trace_lambda(&s, r, 0.5893f);
+    float at_blue = holo_trace_lambda(&s, r, 0.45f);
+    float at_red = holo_trace_lambda(&s, r, 0.65f);
+    printf("  D %.2f, red %.2f, blue %.2f\n",
+           (double)at_d, (double)at_red, (double)at_blue);
+    check(at_d > 15.0f, "the D line, which the rings were cut for, sees the sun");
+    check(at_blue < 1.0f, "blue leans off the axis and misses the disk");
+    check(at_red > at_blue, "red leans less than blue");
+}
+
+static void test_fresnel_spectral_agrees_on_gray(void) {
+    printf("trace: through an achromatic Fresnel, spectral and RGB agree "
+           "where they can\n");
+    /* A neutral scene seen through the lens. Straight in through the flat
+       central disc the two walks must land on the same number exactly:
+       every interface is at normal incidence, where s and p are one
+       coefficient, so nothing separates a Stokes vector from a scalar.
+
+       At a slant they are ALLOWED to differ, and do, by two percent -- and
+       that is the physics, not a bug. The oblique ray's first surface is a
+       riser met at eighty degrees, which polarizes it hard (rs 0.52 against
+       rp 0.22); it then TIRs off the back, climbs out of one groove and
+       into the next through a facet at Brewster's angle, and leaves after
+       eight interactions where a dish lens has two. The spectral walk
+       carries that polarization into every later interface; the RGB walk
+       averages s and p at each and cannot know, the same way its polarizer
+       is a flat 50%. The bound below is loose on purpose: it is there to
+       catch a surface carried through one walk and not the other -- a
+       stranded inside flag reads as a factor, not a few percent. */
+    HoloScene s = {
+        .fresnels = { fresnel_lens(1.5f, 0.0f) },
+        .fresnel_count = 1,
+        .has_floor = 1,
+        .floor_y = -1.0f,
+        .floor_a = hv3(0.8f, 0.8f, 0.8f), .floor_b = hv3(0.3f, 0.3f, 0.3f),
+        .sun_dir = hv3(0, 1, 0),
+        .horizon = hv3(0.9f, 0.9f, 0.9f), .zenith = hv3(0.2f, 0.2f, 0.2f),
+    };
+    HoloRay axial = { .origin = hv3(0.01f, 0.3f, 1.0f), .dir = hv3(0, 0, -1) };
+    HoloV3 rgb = holo_trace_ray(&s, axial);
+    HoloV3 spec = holo_trace_ray_spectral(&s, axial);
+    check(rgb.x > 0.0f, "the axial ray sees something");
+    check_close(spec.x, rgb.x, "at normal incidence, spectral r matches");
+    check_close(spec.y, rgb.y, "spectral g matches");
+    check_close(spec.z, rgb.z, "spectral b matches");
+
+    HoloRay slant = { .origin = hv3(0.2f, 0.3f, 1.0f),
+                      .dir = hv3_norm(hv3(0.05f, -0.4f, -1)) };
+    rgb = holo_trace_ray(&s, slant);
+    spec = holo_trace_ray_spectral(&s, slant);
+    printf("  at a slant: rgb %.4f, spectral %.4f\n",
+           (double)rgb.x, (double)spec.x);
+    check(fabsf(spec.x - rgb.x) < 0.05f * rgb.x,
+          "at a slant the two agree to polarization, not beyond");
+}
+
+static void test_a_fresnel_is_not_a_stone(void) {
+    printf("trace: a Fresnel lens lights the ground it stands over\n");
+    /* The lens lying flat three metres up, grooves to the noon sun, over a
+       grey floor: glass, and the floor beneath is lit; made a mirror, and
+       it is in shadow. The sun_blocked clause, stated for the fifth shape. */
+    HoloScene s = {
+        .fresnels = { fresnel_lens(1.5f, 0.0f) },
+        .fresnel_count = 1,
+        .has_floor = 1,
+        .floor_a = hv3(0.9f, 0.9f, 0.9f),
+        .floor_b = hv3(0.9f, 0.9f, 0.9f),
+        .sun_dir = hv3(0, 1, 0),
+        .horizon = hv3(1, 1, 1), .zenith = hv3(0.2f, 0.4f, 0.6f),
+    };
+    s.fresnels[0].center = hv3(0, 3, 0);
+    s.fresnels[0].axis = hv3(0, 1, 0);
+
+    HoloRay r = { .origin = hv3(0.2f, 1.0f, 0), .dir = hv3(0, -1, 0) };
+    float lit = holo_trace_lambda(&s, r, 0.55f);
+
+    s.fresnels[0].transmit = 0.0f;
+    s.fresnels[0].mirror = 1.0f;
+    float shaded = holo_trace_lambda(&s, r, 0.55f);
+
+    printf("  under glass %.3f, under mirror %.3f\n",
+           (double)lit, (double)shaded);
+    check(lit > shaded * 1.5f, "glass lets the sun through and a mirror does not");
+}
+
 int main(void) {
     test_camera();
     test_shading();
@@ -618,5 +803,9 @@ int main(void) {
     test_lens_focuses();
     test_lens_has_chromatic_aberration();
     test_a_lens_is_not_a_stone();
+    test_fresnel_collimates();
+    test_fresnel_has_chromatic_aberration();
+    test_fresnel_spectral_agrees_on_gray();
+    test_a_fresnel_is_not_a_stone();
     return report();
 }

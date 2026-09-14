@@ -24,7 +24,7 @@
 
     var L = root.linalg, S = root.spectrum, f = L.f;
 
-    var MAX_SPHERES = 8, MAX_RECTS = 24, MAX_DISHES = 4;
+    var MAX_SPHERES = 8, MAX_RECTS = 24, MAX_DISHES = 4, MAX_FRESNELS = 1;
     var FILTER_NONE = 0, POLARIZER = 1, WAVEPLATE = 2;
     var GRATING_ORDERS = 4;
 
@@ -60,7 +60,14 @@
         ['grat0_period_w', 1, 211],
         ['grat1_groove_idx', 1, 212],
         ['grat1_period_w', 1, 213],
-        ['grat_w2', 1, 214]
+        ['grat_w2', 1, 214],
+        /* One Fresnel lens in scalar slots, appended so nothing above
+           moved: gpu_scene.h has the budget that made it one. */
+        ['fres_center_focal', 1, 215],
+        ['fres_axis_r0', 1, 216],
+        ['fres_albedo_mirror', 1, 217],
+        ['fres_glass', 1, 218],
+        ['fres_ring', 1, 219]
     ];
 
     /* Slot base per field, and the check that the declared bases and the
@@ -81,9 +88,9 @@
         return at;
     }());
 
-    if (TOTAL_SLOTS !== 215) {
+    if (TOTAL_SLOTS !== 220) {
         throw new Error('scene.js layout: ' + TOTAL_SLOTS +
-                        ' slots, but shaders/trace.glsl declares vec4 params[215]');
+                        ' slots, but shaders/trace.glsl declares vec4 params[220]');
     }
 
     var TOTAL_FLOATS = TOTAL_SLOTS * 4;
@@ -128,7 +135,7 @@
     function pack(doc, cam, spectral) {
         var out = new Float32Array(TOTAL_FLOATS);
         var spheres = doc.spheres || [], rects = doc.rects || [];
-        var dishes = doc.dishes || [];
+        var dishes = doc.dishes || [], fresnels = doc.fresnels || [];
         var floor = doc.floor || {}, sky = doc.sky || {};
         var i;
 
@@ -260,6 +267,31 @@
            including when there are no dishes at all. */
         out[SLOT.dish_rim_count * 4 + 1] = dishes.length;
 
+        /* The Fresnel lens, as the C writes it: the count lane always, the
+           fields only when there is a lens, and only the first one -- the
+           GPU has one slot for it. */
+        out[SLOT.fres_ring * 4 + 2] = fresnels.length > 0 ? 1 : 0;
+        if (fresnels.length > 0) {
+            var fr = fresnels[0];
+            var fb = SLOT.fres_center_focal * 4;
+            put3(out, fb, v(fr.center));
+            out[fb + 3] = fr.focal || 0;
+            fb = SLOT.fres_axis_r0 * 4;
+            put3(out, fb, v(fr.axis));
+            out[fb + 3] = fr.r0 || 0;
+            fb = SLOT.fres_albedo_mirror * 4;
+            put3(out, fb, v(fr.albedo));
+            out[fb + 3] = fr.mirror || 0;
+            fb = SLOT.fres_glass * 4;
+            out[fb] = fr.transmit || 0;
+            out[fb + 1] = fr.ior || 0;
+            out[fb + 2] = fr.disperse || 0;
+            out[fb + 3] = fr.thick || 0;
+            fb = SLOT.fres_ring * 4;
+            out[fb] = fr.pitch || 0;
+            out[fb + 1] = fr.rim || 0;
+        }
+
         for (i = 0; i < S.WAVELENGTHS; i++) {
             var wt = S.weight(i);
             var sb = (SLOT.spectral_lw + i) * 4;
@@ -367,6 +399,7 @@
 
     root.scene = {
         MAX_SPHERES: MAX_SPHERES, MAX_RECTS: MAX_RECTS, MAX_DISHES: MAX_DISHES,
+        MAX_FRESNELS: MAX_FRESNELS,
         FILTER_NONE: FILTER_NONE, POLARIZER: POLARIZER, WAVEPLATE: WAVEPLATE,
         GRATING_ORDERS: GRATING_ORDERS,
         LAYOUT: LAYOUT, SLOT: SLOT,

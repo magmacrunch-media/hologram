@@ -31,6 +31,7 @@ answer.
 | **Polarization.** Every ray carries a Stokes vector; every interface applies a Mueller matrix. Crossed polarizers go black, a third at 45° between them brings back exactly one eighth, and a waveplate writes interference colour because its retardance runs as 1/λ. | ![](docs/images/m6-polarization.png) |
 | **Curved mirrors as optics quotes them:** apex, axis, vertex radius of curvature, conic constant, rim. Stand at a paraboloid's focus and every zone of the dish reflects your eye into the sun, so the whole aperture flashes. A solar furnace, from the inside. | ![](docs/images/m8-furnace.png) |
 | **Diffraction gratings** in the conical (off-plane) vector form. The groove component of the direction is conserved, the dispersion component picks up `mλ/d`, and `m = 0` falls out as exact specular. Orders sweep across a ruled panel as you walk, the way a CD tilts its colours. | ![](docs/images/m9-gratings.png) |
+| **A Fresnel lens as one primitive.** Forty concentric prism rings in five uniform slots, because a ring's tilt is a function of its radius -- the exact solution of the prism equation -- and is computed when a ray arrives rather than stored. Seen from its focus the aperture fills with sun, the way a paraboloid's does from its focus, at a fifth the solid lens's thickness -- and the risers draw the thin dark circles a lighthouse lens shows. | ![](docs/images/fresnel.png) |
 
 ## Why a ray tracer
 
@@ -76,6 +77,7 @@ accept `--dump`, which writes that comparison's inputs out for `tools/gldiff`.
 | `m9_spectrum` | Two ruled gratings throwing the sun's orders back at you. |
 | `shadows` | What blocks the sun and what deliberately does not: a dish, a matte sphere and an opaque panel casting; a glass ball and a polarizer casting nothing. |
 | `lens` | Two lenses of the same glass index and different dispersion, seen from their shared focus. Run with `--spectral`: the low-dispersion one shows a thin coloured ring and the high-dispersion one spreads the sun into concentric spectra. |
+| `fresnel` | The lens example's solid lens cut into thirteen rings -- same glass, rim and focal length, a fifth the thickness -- seen from its focus. The aperture fills with sun and the risers draw the thin dark circles a lighthouse lens shows. `--spectral` fringes each ring on its own. |
 
 `m7_room`, `m8_furnace` and `m9_spectrum` are interactive: click to capture the
 mouse, `WASD` to walk, `Space` to jump, `T` to toggle spectral tracing, `Escape`
@@ -88,7 +90,7 @@ to release the mouse.
 - **C99 engine, one tracer in three dialects** (HLSL for D3D11, GLSL for GL
   and GLES3/WebGL2, MSL for Metal), on [sokol](https://github.com/floooh/sokol)
   (vendored, zlib licence) for the window, GPU device and swapchain. Windows
-  ships and Linux is proven -- all nine examples pass the oracle natively on
+  ships and Linux is proven -- every example passes the oracle natively on
   GL as well as under D3D11 -- while the Metal dialect is written,
   type-checked, and has not yet met a Metal device.
 - **The tracing runs on the GPU** as a fullscreen-quad fragment shader over a
@@ -120,14 +122,15 @@ pixels off by more than 8/255. Every one passes.
 |---|---|---|---|---|
 | `m2_gpu` | spheres, checker floor, the RGB walk | 0.1030 · 0.001% | 0.0001 · 0.000% | 0.1033 · 0.001% |
 | `m3_mirrors` | facing mirrors recursing | 0.0480 · 0.001% | 0.0003 · 0.001% | 0.0482 · 0.001% |
-| `m4_glass` | Fresnel, refraction, total internal reflection | 0.1161 · 0.163% | 0.0201 · 0.123% | 0.1603 · 0.163% |
-| `m5_spectral` | twelve wavelengths, Cauchy dispersion | 0.1183 · 0.503% | 0.0802 · 0.383% | 0.2512 · 0.498% |
+| `m4_glass` | Fresnel, refraction, total internal reflection | 0.1136 · 0.149% | 0.0201 · 0.123% | 0.1603 · 0.163% |
+| `m5_spectral` | twelve wavelengths, Cauchy dispersion | 0.1077 · 0.466% | 0.0802 · 0.383% | 0.2512 · 0.498% |
 | `m6_polarization` | Stokes vectors, Mueller matrices, a waveplate | 0.0608 · 0.015% | 0.0015 · 0.009% | 0.0657 · 0.015% |
-| `m7_room` | all of the above at once, spectrally | 0.0834 · 0.230% | 0.0400 · 0.156% | 0.1976 · 0.236% |
-| `m8_furnace` | conic dishes, focusing at R/2 | 0.0191 · 0.022% | 0.0016 · 0.010% | 0.0283 · 0.022% |
-| `m9_spectrum` | gratings, conical orders | 0.0949 · 0.025% | 0.0026 · 0.010% | 0.0973 · 0.025% |
-| `shadows` | who casts one, and the two who do not | 0.0084 · 0.021% | 0.0066 · 0.115% | 0.0116 · 0.021% |
-| `lens` | refracting dishes, chromatic aberration | 0.0343 · 0.009% | — | — |
+| `m7_room` | all of the above at once, spectrally | 0.0866 · 0.219% | 0.0400 · 0.156% | 0.1976 · 0.236% |
+| `m8_furnace` | conic dishes, focusing at R/2 | 0.0187 · 0.021% | 0.0016 · 0.010% | 0.0283 · 0.022% |
+| `m9_spectrum` | gratings, conical orders | 0.0948 · 0.024% | 0.0026 · 0.010% | 0.0973 · 0.025% |
+| `shadows` | who casts one, and the two who do not | 0.0077 · 0.010% | 0.0066 · 0.115% | 0.0116 · 0.021% |
+| `lens` | refracting dishes, chromatic aberration | 0.0348 · 0.000% | 0.0129 · 0.000% | 0.0352 · 0.000% |
+| `fresnel` | a Fresnel lens as one primitive, its rings computed | 0.0404 · 0.038% | 0.0225 · 0.032% | 0.0725 · 0.040% |
 
 `shadows` is the row to copy when a decision gets duplicated into the
 dialects: it exists because sun_blocked was stated four times and no frame
@@ -162,12 +165,12 @@ of the porting work is written but unproven, and should be read that way.
 
 | path | state |
 |---|---|
-| HLSL tracer, D3D11 readback | green, eight of eight |
-| GLSL tracer | green, eight of eight, natively on Linux GL and through `tools/gldiff` |
+| HLSL tracer, D3D11 readback | green, eleven of eleven |
+| GLSL tracer | green, eleven of eleven natively on Linux GL, and through `tools/gldiff` |
 | GL readback (`glReadPixels`) | green -- it is what the native Linux `--diff` reads |
 | MSL tracer | type-checks under `tools/metalcheck`; no Metal device has seen it |
 | Metal readback | type-checks as Objective-C under `tools/metalcheck`; never built for a real SDK |
-| `build.sh` on Linux | builds and runs; tests and all eight `--diff` green |
+| `build.sh` on Linux | builds and runs; tests and all eleven `--diff` green |
 | Windows binary under Wine | green 8/8, once Microsoft's `d3dcompiler_47.dll` sits beside the exe -- Wine's own HLSL compiler silently miscompiles the tracer |
 | `build.sh` on macOS | never executed |
 
@@ -223,7 +226,7 @@ panels linearly, once per ray per bounce, and a full mirror keeps every ray
 alive to the bounce cap. Panel count is a frame-time budget, not a capacity.
 
 ```
-buildench.exe
+build\bench.exe
 ```
 
 It sweeps 1 up to `HOLO_MAX_RECTS` in the same window, timing the GPU rather
@@ -262,7 +265,7 @@ testable, the discipline magnolia's `timestep.c` was extracted for.
 | `linalg.c` | Vectors, and the optics that is vector arithmetic: reflection, Snell refraction, the Fresnel equations, the grating equation. |
 | `polar.c` | Stokes rows, Mueller matrices, Fresnel amplitudes with the TIR phase. |
 | `spectrum.c` | Wavelength samples, Cauchy dispersion, CIE colour matching. |
-| `geometry.c` | Rays against spheres, planes, rectangles and conic dishes. |
+| `geometry.c` | Rays against spheres, planes, rectangles, conic dishes and Fresnel lenses. |
 | `camera.c` | The camera as a ray generator. |
 | `cpu_trace.c` | The reference tracer, the oracle. |
 | `gpu_scene.c` | The scene as the shader's uniform block. |
@@ -278,13 +281,16 @@ testable, the discipline magnolia's `timestep.c` was extracted for.
 build.bat test
 ```
 
-**438 checks across 9 suites**, each test a standalone binary. They assert
+**635 checks across 9 suites**, each test a standalone binary. They assert
 physics, not pixels: Snell's angles into n=1.5 glass, the 41.81° critical
 angle, 4% reflectance at normal incidence, a vanishing p-component at
 Brewster's angle, Malus's law at five angles, the three-polarizer paradox to
 the exact eighth, BK7's Abbe number computing to its catalogue 64, a
 paraboloid focusing every zone at R/2, an ellipsoid imaging focus onto focus,
-Littrow retroreflection, and the conical invariant.
+Littrow retroreflection, the conical invariant, a Fresnel ring's tilt solving
+the prism equation exactly and its outermost usable ring landing on that same
+41.81° -- and, through the tracer, a lens whose rings were cut for one focus
+reading sun times two Fresnel transmittances from it, to the last digit.
 
 The one exception is `test_gpu_layout.c`, which asserts bookkeeping rather
 than optics: the GLSL tracer reads the scene by slot number out of one `vec4`
@@ -305,6 +311,19 @@ slots instead. The CPU tracer mirrors the structure exactly, which keeps the
 oracle diff meaningful. See
 [Shader constraints](https://github.com/magmacrunch-media/hologram/wiki/Shader-constraints)
 in the wiki for the full account.
+
+A third fxc habit, milder than the two above and handled in the shader rather
+than around it: at optimisation level 3 it contracts and reassociates
+arithmetic, and a ray within float noise of the critical angle can land on the
+other side of total internal reflection from the CPU -- escaped against
+trapped, which on a pixel is bright against black. `trace.hlsl` marks the four
+values that decide it `precise` (the `sin_t` in `fresnel` and `fresnel_amp`,
+the refract discriminants in both walks). It was found by `examples/fresnel`,
+whose risers are nothing but such rays: 1.9% outliers on D3D11 against 0.03%
+under Mesa and 0.04% through ANGLE, which compiles the GLSL twin through the
+same fxc -- so the compiler's treatment of this dialect, not the tracer, was
+the variable. The GLSL and Metal twins do not carry the keyword; neither
+needed it.
 
 A corollary that matters for Wine and Proton: hologram compiles its HLSL at
 **runtime**, and off Windows the `D3DCompile` it calls is Wine's own HLSL
@@ -340,9 +359,10 @@ ignore given the rest of the primitive say so instead of sitting there
 looking live.
 
 It shows the budget against the caps while you look at the room -- 24 rects, 8
-spheres, 4 dishes, and the two GPU grating slots whose third entry renders
-matte black on the GPU while the CPU oracle renders it correctly. Adding is
-refused at the cap rather than allowed and silently dropped by the tracer.
+spheres, 4 dishes, one Fresnel lens, and the two GPU grating slots whose third
+entry renders matte black on the GPU while the CPU oracle renders it
+correctly. Adding is refused at the cap rather than allowed and silently
+dropped by the tracer.
 
 What it emits is checked, not asserted: `editor/roundtrip.c` compiles a
 literal copied out of the editor and packs it, and gets the block `--dump`

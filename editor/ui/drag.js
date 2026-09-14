@@ -25,11 +25,13 @@
     var L = root.linalg;
 
     /* Which field of a primitive is its position. */
-    var ORIGIN = { sphere: 'center', rect: 'corner', dish: 'apex' };
+    var ORIGIN = { sphere: 'center', rect: 'corner', dish: 'apex',
+                   fresnel: 'center' };
     var KIND_OF = {};
     KIND_OF[root.pick.SPHERE] = { list: 'spheres', kind: 'sphere' };
     KIND_OF[root.pick.RECT] = { list: 'rects', kind: 'rect' };
     KIND_OF[root.pick.DISH] = { list: 'dishes', kind: 'dish' };
+    KIND_OF[root.pick.FRESNEL] = { list: 'fresnels', kind: 'fresnel' };
 
     function create(opts) {
         var canvas = document.getElementById(opts.canvas);

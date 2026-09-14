@@ -52,6 +52,8 @@ static Field fields[] = {
     F(spectral_lw),
     F(grat0_groove_idx), F(grat0_period_w),
     F(grat1_groove_idx), F(grat1_period_w), F(grat_w2),
+    F(fres_center_focal), F(fres_axis_r0), F(fres_albedo_mirror),
+    F(fres_glass), F(fres_ring),
 };
 
 static const int FIELD_COUNT = (int)(sizeof fields / sizeof fields[0]);
@@ -122,8 +124,11 @@ static void check_occluders(const char *path) {
         *end = 0;
     }
 
-    static const char *shapes[] = { "ray_sphere", "ray_rect", "ray_dish" };
-    for (int i = 0; i < 3; i++) {
+    /* Every shape the CPU's sun_blocked tests. A new primitive that is not
+       added here is exactly the one this check would then fail to cover. */
+    static const char *shapes[] = { "ray_sphere", "ray_rect", "ray_dish",
+                                    "ray_fresnel" };
+    for (int i = 0; i < (int)(sizeof shapes / sizeof shapes[0]); i++) {
         snprintf(what, sizeof what, "%s: sun_blocked tests %s",
                  path, shapes[i]);
         check(strstr(start, shapes[i]) != NULL, what);

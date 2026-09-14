@@ -31,7 +31,8 @@
 
     var T_MIN = 1e-3;
 
-    var NONE = 0, SPHERE = 1, RECT = 2, DISH = 3, FLOOR = 4;
+    var NONE = 0, SPHERE = 1, RECT = 2, DISH = 3, FLOOR = 4, FRESNEL = 5;
+    var FRESNEL_WINDOW = 3;   /* HOLO_FRESNEL_WINDOW */
 
     /* holo_ray_sphere. */
     function raySphere(ro, rd, center, radius) {
@@ -127,6 +128,127 @@
         return -1;
     }
 
+    /* holo_fresnel_tilt: one atan2, exact. */
+    function fresnelTilt(r, focal, n) {
+        var h = f(Math.sqrt(f(f(r * r) + f(focal * focal))));
+        return f(Math.atan2(r, f(f(n * h) - focal)));
+    }
+
+    /* holo_ray_fresnel's pieces, each competing for the nearest t through
+       `best` -- an object, since JavaScript has no inout parameter. */
+    function fresnelCylinder(P0, P1, P2, o, d, R, zLo, zHi, best) {
+        if (P2 < 1e-12) { return; }
+        var disc = f(f(P1 * P1) - f(P2 * f(P0 - f(R * R))));
+        if (disc < 0) { return; }
+        var sq = f(Math.sqrt(disc));
+        for (var side = 0; side < 2; side++) {
+            var t = f(f(side === 0 ? -P1 - sq : -P1 + sq) / P2);
+            var z = f(o.z + f(t * d.z));
+            if (t > T_MIN && t < best.t && z >= zLo && z <= zHi) { best.t = t; }
+        }
+    }
+
+    function fresnelFacet(P0, P1, P2, o, d, rk, rOut, s, cs, best) {
+        var q0 = f(f(rk * s) - f(o.z * cs));
+        var qd = f(-d.z * cs);
+        var A = f(f(f(s * s) * P2) - f(qd * qd));
+        var B = f(f(f(s * s) * P1) - f(q0 * qd));
+        var C = f(f(f(s * s) * P0) - f(q0 * q0));
+        var t1, t2;
+        if (Math.abs(A) < 1e-10) {
+            if (Math.abs(B) < 1e-12) { return; }
+            t1 = f(-C / f(2 * B));
+            t2 = -1;
+        } else {
+            var disc = f(f(B * B) - f(A * C));
+            if (disc < 0) { return; }
+            var sq = f(Math.sqrt(disc));
+            t1 = f(f(-B - sq) / A);
+            t2 = f(f(-B + sq) / A);
+        }
+        for (var side = 0; side < 2; side++) {
+            var t = side === 0 ? t1 : t2;
+            var x = f(o.x + f(t * d.x)), y = f(o.y + f(t * d.y));
+            var z = f(o.z + f(t * d.z));
+            var rho = f(Math.sqrt(f(f(x * x) + f(y * y))));
+            var q = f(f(rk * s) - f(z * cs));
+            if (t > T_MIN && t < best.t && q > -1e-6 &&
+                rho >= rk && rho <= rOut) {
+                best.t = t;
+            }
+        }
+    }
+
+    /* holo_ray_fresnel, line for line: the slab-and-cylinder reject, the
+       back face, the walls, then a fixed window of rings seeded from the
+       radius where the ray enters the slab, each ring's tilt computed from
+       its index. Identity only, so the normal is not carried. */
+    function rayFresnel(ro, rd, center, axis, focal, n, r0, pitch, rim, thick) {
+        var fr = basis(axis);
+        var rel = L.sub(ro, center);
+        var o = L.v3(L.dot(rel, fr.u), L.dot(rel, fr.v), L.dot(rel, axis));
+        var d = L.v3(L.dot(rd, fr.u), L.dot(rd, fr.v), L.dot(rd, axis));
+        var P2 = f(f(d.x * d.x) + f(d.y * d.y));
+        var P1 = f(f(o.x * d.x) + f(o.y * d.y));
+        var P0 = f(f(o.x * o.x) + f(o.y * o.y));
+        var rr = f(rim * rim);
+
+        var lo = 0, hi = 1e30;
+        if (Math.abs(d.z) < 1e-8) {
+            if (o.z < -thick || o.z > 0) { return -1; }
+        } else {
+            var ta = f(f(-thick - o.z) / d.z), tb = f(-o.z / d.z);
+            if (ta > tb) { var sw = ta; ta = tb; tb = sw; }
+            if (ta > lo) { lo = ta; }
+            if (tb < hi) { hi = tb; }
+        }
+        if (P2 < 1e-12) {
+            if (P0 > rr) { return -1; }
+        } else {
+            var disc = f(f(P1 * P1) - f(P2 * f(P0 - rr)));
+            if (disc < 0) { return -1; }
+            var sq = f(Math.sqrt(disc));
+            var ca = f(f(-P1 - sq) / P2), cb = f(f(-P1 + sq) / P2);
+            if (ca > lo) { lo = ca; }
+            if (cb < hi) { hi = cb; }
+        }
+        if (hi < lo || hi <= T_MIN) { return -1; }
+
+        var rings = Math.ceil(f(f(rim - r0) / pitch) - 1e-4);
+        if (rings < 1) { return -1; }
+
+        var best = { t: 1e30 };
+        if (Math.abs(d.z) > 1e-8) {
+            var t = f(f(-thick - o.z) / d.z);
+            var q = f(f(P0 + f(f(2 * P1) * t)) + f(P2 * f(t * t)));
+            if (t > T_MIN && q <= rr && q >= f(r0 * r0)) { best.t = t; }
+        }
+        var rkLast = f(r0 + f((rings - 1) * pitch));
+        var top = f(-f(rim - rkLast) * f(Math.tan(fresnelTilt(rkLast, focal, n))));
+        fresnelCylinder(P0, P1, P2, o, d, rim, -thick, top, best);
+        if (r0 > 0) { fresnelCylinder(P0, P1, P2, o, d, r0, -thick, 0, best); }
+
+        var rhoSeed = f(Math.sqrt(f(f(P0 + f(f(2 * P1) * lo)) + f(P2 * f(lo * lo)))));
+        var kSeed = Math.floor(f(f(rhoSeed - r0) / pitch));
+        if (kSeed < 0) { kSeed = 0; }
+        if (kSeed > rings - 1) { kSeed = rings - 1; }
+        for (var i = -FRESNEL_WINDOW; i <= FRESNEL_WINDOW; i++) {
+            var k = kSeed + i;
+            if (k >= 0 && k < rings) {
+                var rk = f(r0 + f(k * pitch));
+                var rOut = f(rk + pitch) < rim ? f(rk + pitch) : rim;
+                var a = fresnelTilt(rk, focal, n);
+                var s = f(Math.sin(a)), cs = f(Math.cos(a));
+                fresnelFacet(P0, P1, P2, o, d, rk, rOut, s, cs, best);
+                if (k < rings - 1) {
+                    var depth = f(f(pitch * s) / cs);
+                    fresnelCylinder(P0, P1, P2, o, d, f(rk + pitch), -depth, 0, best);
+                }
+            }
+        }
+        return best.t >= 1e29 ? -1 : best.t;
+    }
+
     /* cpu_trace.c's nearest_hit, reporting identity instead of a surface. */
     function pick(doc, ro, rd) {
         var best = 1e30, kind = NONE, index = -1;
@@ -152,6 +274,14 @@
                         L.fromArray(dishes[i].axis), f(dishes[i].curv_r),
                         f(dishes[i].conic_k), f(dishes[i].rim));
             if (t > 0 && t < best) { best = t; kind = DISH; index = i; }
+        }
+        var fresnels = doc.fresnels || [];
+        for (i = 0; i < fresnels.length; i++) {
+            var fl = fresnels[i];
+            t = rayFresnel(ro, rd, L.fromArray(fl.center), L.fromArray(fl.axis),
+                           f(fl.focal), f(fl.ior), f(fl.r0 || 0), f(fl.pitch),
+                           f(fl.rim), f(fl.thick));
+            if (t > 0 && t < best) { best = t; kind = FRESNEL; index = i; }
         }
         var floor = doc.floor || {};
         if (floor.has_floor) {
@@ -279,6 +409,21 @@
                 pts.push(L.add(lip, L.add(L.scale(b.u, rim * Math.cos(a)),
                                           L.scale(b.v, rim * Math.sin(a)))));
             }
+        } else if (sel.list === 'fresnels' && doc.fresnels &&
+                   doc.fresnels[sel.index]) {
+            /* A short cylinder: the rim ring at the peak plane and again at
+               the back face, which is what bounds a slab of rings. */
+            o = doc.fresnels[sel.index];
+            var fc = L.fromArray(o.center), fax = L.norm(L.fromArray(o.axis));
+            var frim = o.rim || 0, fb = basis(fax);
+            var back = L.add(fc, L.scale(fax, -(o.thick || 0)));
+            pts.push(fc, back);
+            for (i = 0; i < 12; i++) {
+                var fa = i * Math.PI / 6;
+                var ring = L.add(L.scale(fb.u, frim * Math.cos(fa)),
+                                 L.scale(fb.v, frim * Math.sin(fa)));
+                pts.push(L.add(fc, ring), L.add(back, ring));
+            }
         }
         return pts;
     }
@@ -320,8 +465,10 @@
 
     root.pick = {
         NONE: NONE, SPHERE: SPHERE, RECT: RECT, DISH: DISH, FLOOR: FLOOR,
+        FRESNEL: FRESNEL,
         pick: pick, cameraRay: cameraRay, conformance: conformance,
         raySphere: raySphere, rayRect: rayRect, rayDish: rayDish,
+        rayFresnel: rayFresnel, fresnelTilt: fresnelTilt,
         rayPlane: rayPlane, project: project, screenBox: screenBox
     };
 }(window.Hologram = window.Hologram || {}));

@@ -153,6 +153,17 @@ int main(void) {
         .albedo = hv3(0.9f, 0.9f, 0.9f), .mirror = 0.95f,
     };
 
+    /* A Fresnel lens: its design travels, not its rings. 1/30 is the
+       awkward pitch, with no short decimal spelling. */
+    scene.fresnel_count = 1;
+    scene.fresnels[0] = (HoloFresnel){
+        .center = hv3(2, 1, -4), .axis = hv3(0, 0, 1),
+        .focal = 0.7f, .r0 = 0.0f, .pitch = 1.0f / 30.0f, .rim = 0.6f,
+        .thick = 0.05f,
+        .albedo = hv3(1, 1, 1), .mirror = 0.0f,
+        .transmit = 1.0f, .ior = 1.5168f, .disperse = 0.0042f,
+    };
+
     scene.has_floor = 1;
     scene.floor_y = -0.5f;
     scene.floor_a = hv3(0.2f, 0.2f, 0.2f);
@@ -191,6 +202,7 @@ int main(void) {
         check_int_key(caps, "rects", HOLO_MAX_RECTS, "cap: rects");
         check_int_key(caps, "spheres", HOLO_MAX_SPHERES, "cap: spheres");
         check_int_key(caps, "dishes", HOLO_MAX_DISHES, "cap: dishes");
+        check_int_key(caps, "fresnels", HOLO_MAX_FRESNELS, "cap: fresnels");
         check_int_key(caps, "gpu_gratings", 2, "cap: gpu gratings");
         check_int_key(caps, "bounce", HOLO_MAX_BOUNCE, "cap: bounce");
         check_int_key(caps, "rays", HOLO_MAX_RAYS, "cap: rays");
@@ -217,6 +229,7 @@ int main(void) {
     check_int(count_of("radius"), 1, "one sphere written");
     check_int(count_of("corner"), 2, "two rects written");
     check_int(count_of("curv_r"), 1, "one dish written");
+    check_int(count_of("focal"), 1, "one Fresnel lens written");
 
     const char *sph = find_list("spheres");
     check(sph != 0, "spheres block exists");
@@ -263,6 +276,16 @@ int main(void) {
         check_exact(d, "mirror", 0.95f, "dish mirror");
     }
 
+    const char *fr = find_list("fresnels");
+    check(fr != 0, "fresnels block exists");
+    if (fr) {
+        check_exact(fr, "focal", 0.7f, "Fresnel focal length");
+        check_exact(fr, "pitch", 1.0f / 30.0f, "Fresnel pitch round-trips");
+        check_exact(fr, "rim", 0.6f, "Fresnel rim");
+        check_exact(fr, "thick", 0.05f, "Fresnel slab depth");
+        check_exact(fr, "ior", 1.5168f, "Fresnel design index");
+    }
+
     const char *fl = strstr(text, "\"floor\"");
     check(fl != 0, "floor block exists");
     if (fl) {
@@ -292,6 +315,8 @@ int main(void) {
               "empty scene has an empty spheres list");
         check(strstr(text, "\"rects\": [\n  ]") != 0,
               "empty scene has an empty rects list");
+        check(strstr(text, "\"fresnels\": [\n  ]") != 0,
+              "empty scene has an empty fresnels list");
         check_int_key(text, "spectral", 0, "empty scene is not spectral");
     }
 

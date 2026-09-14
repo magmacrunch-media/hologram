@@ -25,7 +25,7 @@
  * offsetof(HoloGpuScene, ...) / 16, so the two cannot drift apart quietly.
  */
 
-uniform vec4 params[215];   /* sizeof(HoloGpuScene) / 16 */
+uniform vec4 params[220];   /* sizeof(HoloGpuScene) / 16 */
 
 /* HoloDisplayUniforms, the header every hologram shader receives. */
 #define res                 params[0].xy
@@ -79,6 +79,15 @@ uniform vec4 params[215];   /* sizeof(HoloGpuScene) / 16 */
 #define grat1_period_w      params[213]
 #define grat_w2             params[214]
 
+/* One Fresnel lens as scalar slots, appended so that no slot above moves:
+   the block stood at 215 of the 224 vec4 WebGL2 guarantees a fragment
+   shader, and a lens is five of the nine that were left. */
+#define fres_center_focal   params[215]
+#define fres_axis_r0        params[216]
+#define fres_albedo_mirror  params[217]
+#define fres_glass          params[218]
+#define fres_ring           params[219]
+
 const float T_MIN = 1e-3;      /* HOLO_T_MIN */
 const float AMBIENT = 0.1;     /* HOLO_AMBIENT */
 const int   MAX_BOUNCE = 16;   /* HOLO_MAX_BOUNCE */
@@ -86,6 +95,7 @@ const int   MAX_RAYS = 32;     /* HOLO_MAX_RAYS */
 const int   STACK = 16;        /* HOLO_STACK */
 const float MIN_TP = 0.002;    /* HOLO_MIN_TP */
 const int   WAVELENGTHS = 12;  /* HOLO_WAVELENGTHS */
+const int   FRESNEL_WINDOW = 3; /* HOLO_FRESNEL_WINDOW */
 
 in vec2 uv;
 out vec4 frag_color;
@@ -201,6 +211,159 @@ bool ray_dish(vec3 ro, vec3 rd, vec3 apex, vec3 axis,
     return false;
 }
 
+/* holo_fresnel_tilt: the facet tilt a Fresnel ring at radius r needs, the
+   exact solution of arcsin(n sin a) - a = atan(r / f). Ported statement for
+   statement; n is the design index, the D line, on purpose. */
+float fresnel_tilt(float r, float focal, float n_design) {
+    float h = sqrt(r * r + focal * focal);
+    return atan(r, n_design * h - focal);
+}
+
+/* The pieces of holo_ray_fresnel, in the lens frame: each competes for the
+   nearest t through best / best_n and leaves them alone on a miss. */
+void fresnel_cylinder(float P0, float P1, float P2, vec3 o, vec3 d,
+                      float R, float z_lo, float z_hi,
+                      inout float best, inout vec3 best_n) {
+    if (P2 < 1e-12) return;
+    float disc = P1 * P1 - P2 * (P0 - R * R);
+    if (disc < 0.0) return;
+    float sq = sqrt(disc);
+    for (int side = 0; side < 2; side++) {
+        float t = (side == 0 ? -P1 - sq : -P1 + sq) / P2;
+        float z = o.z + t * d.z;
+        if (t > T_MIN && t < best && z >= z_lo && z <= z_hi) {
+            best = t;
+            best_n = vec3((o.x + t * d.x) / R, (o.y + t * d.y) / R, 0.0);
+        }
+    }
+}
+
+void fresnel_facet(float P0, float P1, float P2, vec3 o, vec3 d,
+                   float rk, float r_out, float s, float cs,
+                   inout float best, inout vec3 best_n) {
+    float q0 = rk * s - o.z * cs;
+    float qd = -d.z * cs;
+    float A = s * s * P2 - qd * qd;
+    float B = s * s * P1 - q0 * qd;
+    float C = s * s * P0 - q0 * q0;
+    float t1, t2;
+    if (abs(A) < 1e-10) {
+        if (abs(B) < 1e-12) return;
+        t1 = -C / (2.0 * B);
+        t2 = -1.0;
+    } else {
+        float disc = B * B - A * C;
+        if (disc < 0.0) return;
+        float sq = sqrt(disc);
+        t1 = (-B - sq) / A;
+        t2 = (-B + sq) / A;
+    }
+    for (int side = 0; side < 2; side++) {
+        float t = side == 0 ? t1 : t2;
+        float x = o.x + t * d.x, y = o.y + t * d.y, z = o.z + t * d.z;
+        float rho = sqrt(x * x + y * y);
+        float q = rk * s - z * cs;
+        if (t > T_MIN && t < best && q > -1e-6 && rho >= rk && rho <= r_out) {
+            best = t;
+            float inv = rho > 1e-12 ? 1.0 / rho : 0.0;
+            best_n = vec3(s * x * inv, s * y * inv, cs);
+        }
+    }
+}
+
+/* holo_ray_fresnel: a Fresnel lens as one primitive, its rings computed
+   from their index rather than stored. Ported statement for statement --
+   including the fixed window of rings, a loop of constant trip count with
+   no early exit, on purpose: that is the loop shape fxc has not
+   miscompiled in the HLSL twin. */
+bool ray_fresnel(vec3 ro, vec3 rd, vec3 center, vec3 axis,
+                 float focal, float n_design, float r0, float pitch,
+                 float rim, float thick, out float t_out, out vec3 normal) {
+    t_out = 0.0; normal = vec3(0.0, 0.0, 0.0);
+    vec3 helper = abs(axis.x) > 0.9 ? vec3(0.0, 1.0, 0.0)
+                                    : vec3(1.0, 0.0, 0.0);
+    vec3 u = normalize(cross(helper, axis));
+    vec3 v = cross(axis, u);
+    vec3 rel = ro - center;
+    vec3 o = vec3(dot(rel, u), dot(rel, v), dot(rel, axis));
+    vec3 d = vec3(dot(rd, u), dot(rd, v), dot(rd, axis));
+
+    float P2 = d.x * d.x + d.y * d.y;
+    float P1 = o.x * d.x + o.y * d.y;
+    float P0 = o.x * o.x + o.y * o.y;
+    float rr = rim * rim;
+
+    float lo = 0.0, hi = 1e30;
+    if (abs(d.z) < 1e-8) {
+        if (o.z < -thick || o.z > 0.0) return false;
+    } else {
+        float ta = (-thick - o.z) / d.z, tb = -o.z / d.z;
+        if (ta > tb) { float swap = ta; ta = tb; tb = swap; }
+        if (ta > lo) lo = ta;
+        if (tb < hi) hi = tb;
+    }
+    if (P2 < 1e-12) {
+        if (P0 > rr) return false;
+    } else {
+        float disc = P1 * P1 - P2 * (P0 - rr);
+        if (disc < 0.0) return false;
+        float sq = sqrt(disc);
+        float ta = (-P1 - sq) / P2, tb = (-P1 + sq) / P2;
+        if (ta > lo) lo = ta;
+        if (tb < hi) hi = tb;
+    }
+    if (hi < lo || hi <= T_MIN) return false;
+
+    int rings = int(ceil((rim - r0) / pitch - 1e-4));
+    if (rings < 1) return false;
+
+    float best = 1e30;
+    vec3 best_n = vec3(0.0, 0.0, 1.0);
+
+    if (abs(d.z) > 1e-8) {
+        float t = (-thick - o.z) / d.z;
+        float q = P0 + 2.0 * P1 * t + P2 * t * t;
+        if (t > T_MIN && q <= rr && q >= r0 * r0) {
+            best = t;
+            best_n = vec3(0.0, 0.0, -1.0);
+        }
+    }
+    {
+        float rk = r0 + float(rings - 1) * pitch;
+        float a = fresnel_tilt(rk, focal, n_design);
+        float top = -(rim - rk) * tan(a);
+        fresnel_cylinder(P0, P1, P2, o, d, rim, -thick, top, best, best_n);
+        if (r0 > 0.0) {
+            fresnel_cylinder(P0, P1, P2, o, d, r0, -thick, 0.0, best, best_n);
+        }
+    }
+    float rho_seed = sqrt(P0 + 2.0 * P1 * lo + P2 * lo * lo);
+    int k_seed = int(floor((rho_seed - r0) / pitch));
+    if (k_seed < 0) k_seed = 0;
+    if (k_seed > rings - 1) k_seed = rings - 1;
+    for (int i = -FRESNEL_WINDOW; i <= FRESNEL_WINDOW; i++) {
+        int k = k_seed + i;
+        if (k >= 0 && k < rings) {
+            float rk = r0 + float(k) * pitch;
+            float r_out = rk + pitch < rim ? rk + pitch : rim;
+            float a = fresnel_tilt(rk, focal, n_design);
+            float s = sin(a), cs = cos(a);
+            fresnel_facet(P0, P1, P2, o, d, rk, r_out, s, cs, best, best_n);
+            if (k < rings - 1) {
+                float depth = pitch * s / cs;
+                fresnel_cylinder(P0, P1, P2, o, d, rk + pitch, -depth, 0.0,
+                                 best, best_n);
+            }
+        }
+    }
+
+    if (best >= 1e29) return false;
+    t_out = best;
+    vec3 n = u * best_n.x + v * best_n.y + axis * best_n.z;
+    normal = dot(n, rd) < 0.0 ? n : -n;
+    return true;
+}
+
 /* holo_ray_plane, for the y-up floor only (all any scene has). */
 bool ray_floor(vec3 ro, vec3 rd, out float t) {
     t = 0.0;
@@ -285,6 +448,22 @@ bool nearest_hit(vec3 ro, vec3 rd,
             rect_id = -1;
         }
     }
+    if (fres_ring.z > 0.5 &&
+        ray_fresnel(ro, rd, fres_center_focal.xyz, fres_axis_r0.xyz,
+                    fres_center_focal.w, fres_glass.y, fres_axis_r0.w,
+                    fres_ring.x, fres_ring.y, fres_glass.w, t, n) &&
+        t < best_t) {
+        best_t = t; best_n = n;
+        albedo = fres_albedo_mirror.xyz;
+        mirror = fres_albedo_mirror.w;
+        transmit = fres_glass.x;
+        ior = fres_glass.y;
+        disperse = fres_glass.z;
+        /* A volume, as a dish's glass is: facet in, slab, back face out. */
+        volume = fres_glass.x > 0.0;
+        found = true;
+        rect_id = -1;
+    }
     if (has_floor > 0.5 && ray_floor(ro, rd, t) && t < best_t) {
         best_t = t;
         best_n = vec3(0.0, rd.y < 0.0 ? 1.0 : -1.0, 0.0);
@@ -327,6 +506,13 @@ bool sun_blocked(vec3 p) {
                      dish_rim_count(k).x, t, n)) {
             return true;
         }
+    }
+    /* And a Fresnel lens, by the same rule and for the same reason. */
+    if (fres_ring.z > 0.5 && fres_glass.x <= 0.5 &&
+        ray_fresnel(p, sun_dir, fres_center_focal.xyz, fres_axis_r0.xyz,
+                    fres_center_focal.w, fres_glass.y, fres_axis_r0.w,
+                    fres_ring.x, fres_ring.y, fres_glass.w, t, n)) {
+        return true;
     }
     return false;
 }

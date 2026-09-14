@@ -78,6 +78,23 @@
             '    }' + tail;
     }
 
+    function fresnel(l, tail) {
+        return '    {\n' +
+            line('      ', 'center', v3(l.center), ',\n') +
+            line('      ', 'axis', v3(l.axis), ',\n') +
+            line('      ', 'focal', num(l.focal || 0), ',\n') +
+            line('      ', 'r0', num(l.r0 || 0), ',\n') +
+            line('      ', 'pitch', num(l.pitch || 0), ',\n') +
+            line('      ', 'rim', num(l.rim || 0), ',\n') +
+            line('      ', 'thick', num(l.thick || 0), ',\n') +
+            line('      ', 'albedo', v3(l.albedo), ',\n') +
+            line('      ', 'mirror', num(l.mirror || 0), ',\n') +
+            line('      ', 'transmit', num(l.transmit || 0), ',\n') +
+            line('      ', 'ior', num(l.ior || 0), ',\n') +
+            line('      ', 'disperse', num(l.disperse || 0), '\n') +
+            '    }' + tail;
+    }
+
     function list(items, one) {
         return items.map(function (o, i) {
             return one(o, i + 1 < items.length ? ',\n' : '\n');
@@ -108,6 +125,9 @@
         out += line('    ', 'spheres', String(caps.spheres), ',\n');
         out += line('    ', 'rects', String(caps.rects), ',\n');
         out += line('    ', 'dishes', String(caps.dishes), ',\n');
+        out += line('    ', 'fresnels',
+                    String(caps.fresnels === undefined
+                           ? root.caps.DEFAULTS.fresnels : caps.fresnels), ',\n');
         out += line('    ', 'gpu_gratings', String(caps.gpu_gratings), ',\n');
         out += line('    ', 'bounce', String(caps.bounce), ',\n');
         out += line('    ', 'rays', String(caps.rays), '\n');
@@ -126,6 +146,7 @@
         out += '  "spheres": [\n' + list(doc.spheres || [], sphere) + '  ],\n';
         out += '  "rects": [\n' + list(doc.rects || [], rect) + '  ],\n';
         out += '  "dishes": [\n' + list(doc.dishes || [], dish) + '  ],\n';
+        out += '  "fresnels": [\n' + list(doc.fresnels || [], fresnel) + '  ],\n';
 
         out += '  "floor": {\n';
         out += line('    ', 'has_floor', floor.has_floor ? '1' : '0', ',\n');

@@ -71,6 +71,19 @@ typedef struct {
     float grat1_groove_idx[4];
     float grat1_period_w[4];
     float grat_w2[4];            /* x slot0's +2 weight, y slot1's */
+
+    /* One Fresnel lens, as scalar slots the way the gratings are -- not an
+       array, and not because of fxc this time but because of the budget:
+       the block stood at 215 of the 224 float4 WebGL2 guarantees a fragment
+       shader, and a lens is five of the nine that were left. Appended after
+       grat_w2 so that no existing slot moves. A scene with more than
+       HOLO_MAX_FRESNELS lenses is the CPU's business; the GPU draws the
+       first. */
+    float fres_center_focal[4];  /* xyz center, w focal */
+    float fres_axis_r0[4];       /* xyz axis, w r0 */
+    float fres_albedo_mirror[4]; /* xyz albedo, w mirror */
+    float fres_glass[4];         /* x transmit, y ior, z disperse, w thick */
+    float fres_ring[4];          /* x pitch, y rim, z lens count (0 or 1) */
 } HoloGpuScene;
 
 /* Write scene and camera into the block. The camera's aspect is NOT carried:

@@ -164,6 +164,23 @@
         return p;
     }
 
+    function fresnelParts(l) {
+        var p = [];
+        p.push('.center = ' + v3(l.center));
+        p.push('.axis = ' + v3(l.axis));
+        p.push('.focal = ' + fl(l.focal));
+        if (l.r0) { p.push('.r0 = ' + fl(l.r0)); }
+        p.push('.pitch = ' + fl(l.pitch));
+        p.push('.rim = ' + fl(l.rim));
+        p.push('.thick = ' + fl(l.thick));
+        if (!isZeroV3(l.albedo)) { p.push('.albedo = ' + v3(l.albedo)); }
+        if (l.mirror) { p.push('.mirror = ' + fl(l.mirror)); }
+        if (l.transmit) { p.push('.transmit = ' + fl(l.transmit)); }
+        if (l.ior) { p.push('.ior = ' + fl(l.ior)); }
+        if (l.disperse) { p.push('.disperse = ' + fl(l.disperse)); }
+        return p;
+    }
+
     function list(items, parts, indent) {
         return items.map(function (o) {
             return indent + '{ ' + block(parts(o), indent + '  ', 66) + ' },';
@@ -176,7 +193,7 @@
         name = name || 'scene';
         var floor = doc.floor || {}, sky = doc.sky || {};
         var spheres = doc.spheres || [], rects = doc.rects || [];
-        var dishes = doc.dishes || [];
+        var dishes = doc.dishes || [], fresnels = doc.fresnels || [];
         var out = [];
 
         out.push(name + ' = (HoloScene){');
@@ -198,6 +215,12 @@
             out.push(list(dishes, dishParts, '        '));
             out.push('    },');
             out.push('    .dish_count = ' + dishes.length + ',');
+        }
+        if (fresnels.length) {
+            out.push('    .fresnels = {');
+            out.push(list(fresnels, fresnelParts, '        '));
+            out.push('    },');
+            out.push('    .fresnel_count = ' + fresnels.length + ',');
         }
 
         if (floor.has_floor) {

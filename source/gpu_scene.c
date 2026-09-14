@@ -126,6 +126,23 @@ void holo_gpu_scene_fill(HoloGpuScene *gpu, const HoloScene *scene,
     }
     gpu->dish_rim_count[0][1] = (float)scene->dish_count;
 
+    gpu->fres_ring[2] = (float)(scene->fresnel_count > 0 ? 1 : 0);
+    if (scene->fresnel_count > 0) {
+        const HoloFresnel *f = &scene->fresnels[0];
+        put3(gpu->fres_center_focal, f->center);
+        gpu->fres_center_focal[3] = f->focal;
+        put3(gpu->fres_axis_r0, f->axis);
+        gpu->fres_axis_r0[3] = f->r0;
+        put3(gpu->fres_albedo_mirror, f->albedo);
+        gpu->fres_albedo_mirror[3] = f->mirror;
+        gpu->fres_glass[0] = f->transmit;
+        gpu->fres_glass[1] = f->ior;
+        gpu->fres_glass[2] = f->disperse;
+        gpu->fres_glass[3] = f->thick;
+        gpu->fres_ring[0] = f->pitch;
+        gpu->fres_ring[1] = f->rim;
+    }
+
     for (int i = 0; i < HOLO_WAVELENGTHS; i++) {
         HoloV3 w = holo_spectral_weight(i);
         gpu->spectral_lw[i][0] = holo_lambda(i);

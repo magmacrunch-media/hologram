@@ -120,6 +120,26 @@ static void write_dish(FILE *f, const HoloDish *d, const char *tail) {
     fprintf(f, "    }%s", tail);
 }
 
+/* A Fresnel lens is its design, not its rings: focal length, ring pitch,
+   inner and outer radius, slab depth. The rings are computed from these
+   when a ray arrives, so this is the whole of what a file has to carry. */
+static void write_fresnel(FILE *f, const HoloFresnel *l, const char *tail) {
+    fputs("    {\n", f);
+    wfield_v3(f, "      ", "center", l->center, ",\n");
+    wfield_v3(f, "      ", "axis", l->axis, ",\n");
+    wfield_f(f, "      ", "focal", l->focal, ",\n");
+    wfield_f(f, "      ", "r0", l->r0, ",\n");
+    wfield_f(f, "      ", "pitch", l->pitch, ",\n");
+    wfield_f(f, "      ", "rim", l->rim, ",\n");
+    wfield_f(f, "      ", "thick", l->thick, ",\n");
+    wfield_v3(f, "      ", "albedo", l->albedo, ",\n");
+    wfield_f(f, "      ", "mirror", l->mirror, ",\n");
+    wfield_f(f, "      ", "transmit", l->transmit, ",\n");
+    wfield_f(f, "      ", "ior", l->ior, ",\n");
+    wfield_f(f, "      ", "disperse", l->disperse, "\n");
+    fprintf(f, "    }%s", tail);
+}
+
 int holo_scene_write_json(const char *path, const HoloScene *scene,
                           const HoloCamera *cam, int spectral) {
     FILE *f = fopen(path, "wb");
@@ -137,6 +157,7 @@ int holo_scene_write_json(const char *path, const HoloScene *scene,
     fprintf(f, "    \"spheres\": %d,\n", HOLO_MAX_SPHERES);
     fprintf(f, "    \"rects\": %d,\n", HOLO_MAX_RECTS);
     fprintf(f, "    \"dishes\": %d,\n", HOLO_MAX_DISHES);
+    fprintf(f, "    \"fresnels\": %d,\n", HOLO_MAX_FRESNELS);
     fprintf(f, "    \"gpu_gratings\": 2,\n");
     fprintf(f, "    \"bounce\": %d,\n", HOLO_MAX_BOUNCE);
     fprintf(f, "    \"rays\": %d\n", HOLO_MAX_RAYS);
@@ -175,6 +196,13 @@ int holo_scene_write_json(const char *path, const HoloScene *scene,
     for (int i = 0; i < scene->dish_count; i++) {
         write_dish(f, &scene->dishes[i],
                    i + 1 < scene->dish_count ? ",\n" : "\n");
+    }
+    fputs("  ],\n", f);
+
+    fputs("  \"fresnels\": [\n", f);
+    for (int i = 0; i < scene->fresnel_count; i++) {
+        write_fresnel(f, &scene->fresnels[i],
+                      i + 1 < scene->fresnel_count ? ",\n" : "\n");
     }
     fputs("  ],\n", f);
 

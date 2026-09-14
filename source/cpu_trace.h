@@ -120,8 +120,8 @@ typedef struct {
  *
  * NOT A FRESNEL LENS. A real first-order Fresnel is dozens of concentric
  * annular prisms and there are four dish slots; this is the single refracting
- * element that fits, and the prism rings need a primitive that does not exist
- * yet. */
+ * element that fits. The rings are HoloFresnel, below, which arrived after
+ * this note was first written and left it here as the reason it exists. */
 typedef struct {
     HoloV3 apex;
     HoloV3 axis;             /* unit, out of the bowl */
@@ -139,6 +139,37 @@ typedef struct {
     float  disperse;
 } HoloDish;
 
+/* A Fresnel lens: the slab of concentric prism rings holo_ray_fresnel
+ * describes, as ONE primitive. Where a dish stores its shape, this stores a
+ * design -- focal length, ring pitch, inner and outer radius, slab depth --
+ * and every ring's tilt is computed from that when a ray arrives, which is
+ * what lets forty rings ride in one slot of a uniform block that has nine
+ * to spare. The design index is `ior`, the D line: a facet cut for the
+ * wavelength being traced would be perfect at every colour, which is not a
+ * lens, and the chromatic aberration test holds that it is not.
+ *
+ * A volume, like a dish's glass: the ray bends in at a facet, runs through
+ * the slab, and bends out at the flat back, and `inside` toggles at each --
+ * which is why the primitive is a closed solid with walls, since an open one
+ * would leave that flag stranded. One slot, not a count: the uniform block
+ * sits at 215 of the 224 float4 WebGL2 guarantees, and a lens is five. */
+#define HOLO_MAX_FRESNELS 1
+
+typedef struct {
+    HoloV3 center;           /* on the axis, in the plane of the ring peaks */
+    HoloV3 axis;             /* unit, out of the grooved face, toward the focus */
+    float  focal;            /* focus = center + focal * axis */
+    float  r0;               /* radius of the innermost ring's peak; 0 = the axis */
+    float  pitch;            /* ring width; well above HOLO_T_MIN, see geometry.h */
+    float  rim;              /* outer radius; below focal * sqrt(ior^2 - 1) */
+    float  thick;            /* slab depth; above pitch * tan(a) of the last ring */
+    HoloV3 albedo;
+    float  mirror;
+    float  transmit;
+    float  ior;              /* at the D line, and the index the rings are cut for */
+    float  disperse;
+} HoloFresnel;
+
 typedef struct {
     HoloSphere spheres[HOLO_MAX_SPHERES];
     int    sphere_count;
@@ -146,6 +177,8 @@ typedef struct {
     int    rect_count;
     HoloDish dishes[HOLO_MAX_DISHES];
     int    dish_count;
+    HoloFresnel fresnels[HOLO_MAX_FRESNELS];
+    int    fresnel_count;
 
     int    has_floor;
     float  floor_y;

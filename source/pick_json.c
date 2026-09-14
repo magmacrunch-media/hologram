@@ -39,6 +39,16 @@ int holo_pick_ray(const HoloScene *scene, HoloRay ray, int *index) {
             idx = i;
         }
     }
+    for (int i = 0; i < scene->fresnel_count; i++) {
+        const HoloFresnel *l = &scene->fresnels[i];
+        if (holo_ray_fresnel(ray, l->center, l->axis, l->focal, l->ior,
+                             l->r0, l->pitch, l->rim, l->thick, &h) &&
+            h.t < best.t) {
+            best = h;
+            kind = HOLO_PICK_FRESNEL;
+            idx = i;
+        }
+    }
     if (scene->has_floor &&
         holo_ray_plane(ray, hv3(0, scene->floor_y, 0), hv3(0, 1, 0), &h) &&
         h.t < best.t) {
@@ -61,7 +71,8 @@ int holo_pick_write_json(const char *path, const HoloScene *scene,
     fprintf(f, "  \"format\": \"%s\",\n", HOLO_PICK_JSON_FORMAT);
     fprintf(f, "  \"grid\": { \"cols\": %d, \"rows\": %d },\n",
             HOLO_PICK_COLS, HOLO_PICK_ROWS);
-    fputs("  \"kinds\": [\"none\", \"sphere\", \"rect\", \"dish\", \"floor\"],\n", f);
+    fputs("  \"kinds\": [\"none\", \"sphere\", \"rect\", \"dish\", \"floor\", "
+          "\"fresnel\"],\n", f);
 
     /* The camera the grid was cast through, so a reader need not be told it
        separately and cannot use the wrong one by accident. */

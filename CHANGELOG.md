@@ -4,6 +4,101 @@ All notable changes to the hologram engine are documented here.
 
 ## v0.2.0 (unreleased)
 
+### The Fresnel lens
+
+`HoloFresnel`: a lens of concentric prism rings as ONE primitive. It stores
+a design -- focal length, ring pitch, inner and outer radius, slab depth,
+the glass -- and every ring's tilt is computed from its radius when a ray
+arrives. `holo_fresnel_tilt` is the exact solution of the prism-deviation
+condition, arcsin(n sin a) - a = atan(r/f), which rearranges to one atan2.
+No ring is stored, so forty rings cost five uniform slots and no table a
+shader would have to index -- which is how the `lens` example's "and with
+it, a cap raise" turned out to be half wrong: it needed the primitive and
+not the raise.
+
+- `holo_ray_fresnel` treats the lens as a closed solid: back face, rim
+  wall, an inner wall when the rings start off the axis, and a sawtooth of
+  cone facets and cylinder risers, peak at each ring's inner radius. The
+  ring a ray meets is seeded from where it enters the slab and decided by
+  a fixed window of rings either side (`HOLO_FRESNEL_WINDOW`, 3): the
+  grooves are steep enough that an oblique ray crosses a span, and a ray
+  inside the glass crosses several before it surfaces. A fixed trip count
+  with no early exit, on purpose -- the loop shape fxc has not miscompiled
+  here. Closed, because glass is a volume and an open solid would leave
+  the tracer's `inside` flag stranded.
+- Two limits fall out of the algebra and the tests pin both: at r << f the
+  tilt is the thin prism, (r/f)/(n-1); and the usable belt ends at
+  r = f sqrt(n^2 - 1), where the tilt reaches the critical angle -- 41.81
+  degrees for n = 1.5, the same number `test_linalg.c` holds for TIR. The
+  design index is the D line on purpose; a lens cut at the wavelength being
+  traced would be perfect at every colour, and the chromatic test holds
+  that it is not.
+- `tests/test_trace.c`: from the focus, a Fresnel fills with sun EXACTLY --
+  sun times the facet's and the back's Fresnel transmittances, against a
+  black sky so no other branch banks anything -- where the dish lens's
+  focus could only be bracketed. Flint cut for the D line reads 22.2 at D,
+  22.3 at red and 0.0 at blue on a half-degree disk: the lean inside the
+  slab leaves the flat back magnified by n. And spectral and RGB agree
+  exactly at normal incidence and are ALLOWED to differ at a slant, by two
+  percent: the slanted ray's first surface is a riser met at eighty
+  degrees, which polarizes it hard, and the RGB walk, averaging s and p at
+  every interface, cannot know. The dish lens on the same ray agrees to
+  0.01%. That is physics the spectral walk has and the RGB walk
+  approximates away, the same way its polarizer is a flat 50%.
+- The uniform block grew from 215 to 220 float4 slots, appended after
+  `grat_w2` so nothing moved -- inside WebGL2's guaranteed 224 with four to
+  spare, which is why there is one Fresnel slot rather than four.
+  `test_gpu_layout.c` pins the five new slots and names `ray_fresnel` among
+  the shapes every dialect's `sun_blocked` must test.
+- `precise` on the four values that decide total internal reflection in
+  `trace.hlsl`: the `sin_t` in `fresnel` and `fresnel_amp`, and the refract
+  discriminants in both walks. fxc at optimisation level 3 contracts and
+  reassociates them, and a ray within float noise of the critical angle
+  then lands on the other side of it from the CPU -- a coin between escaped
+  and trapped, which on a pixel is bright against black. Every frame has a
+  few such rays and the 0.75% outlier allowance absorbed them. A Fresnel
+  lens seen from its focus is nothing but such rays at its risers, and read
+  1.9% outliers on D3D11 against 0.03% under Mesa and 0.04% through ANGLE
+  -- which compiles the GLSL twin through the same fxc on the same GPU, and
+  was the witness that put it on how this dialect is compiled rather than
+  on the tracer. With optimisation off the gap vanished; `precise` keeps
+  the optimisation and pins the four values, and the frame reads 0.038%
+  -- and most of the older rows moved down a little with it, since every
+  frame had a few of these rays.
+  The GLSL and MSL twins do not carry it: neither compiler needed it, and
+  `precise` is not in GLSL ES 3.0. Every D3D11 row was re-measured with
+  it; the numbers are in the README's table.
+- Every existing row re-measured on D3D11 and Linux GL with the new clause
+  in `nearest_hit`: nine reproduce the README to four decimals; `lens`
+  moved 0.0343 to 0.0352 on D3D11 (max 4/255) and gained the GL cell it
+  never had, 0.0129.
+
+`examples/fresnel` -- the frame `examples/lens` said it could not draw: its
+solid lens cut into thirteen rings, same glass, rim and focal length at a
+fifth the thickness, seen from its focus. The aperture fills with sun and
+the risers draw the thin dark circles a lighthouse lens shows. One lens,
+with the camera on its axis, deliberately: the lens example's camera sits
+between its two lenses' axes, 0.58 m off each, and from there a lens shows
+the room inverted rather than the sun -- which its own header says, and
+which a first draft of this frame reproduced while claiming otherwise. The
+sun disk is two degrees and the pitch 4 cm because the two are one
+decision: a ring's tilt is exact only at its peak, and the far edge of a
+4 cm ring at f = 1.34 leaves 0.030 rad off, inside that disk. Held to the
+oracle on D3D11 and under Mesa, RGB and spectral -- the numbers are in the
+README's table.
+
+The JSON writers and the editor carry the lens: `scene_json.c` writes it
+and a `fresnels` cap, `pick_json` reports it as kind 5 -- appended, so pick
+files written before it still read -- and `editor/core/{scene, schema,
+pick, caps, emit, save}.js` pack, inspect, pick, budget, emit and save it.
+`editor/roundtrip.c` re-run against the 220-slot block: 876 of 876 floats
+identical.
+
+Not yet: the catadioptric bands a first-order lighthouse lens carries above
+and below its dioptric belt, where each ring works by refraction, total
+internal reflection and refraction. They are a second parametric band on
+the same primitive, and they wait until the belt has earned its keep.
+
 ### Lenses
 
 A dish can be glass. `HoloDish` gains `transmit`, `ior` and `disperse` --
@@ -49,7 +144,7 @@ mirror leaves it at 0.090.
 NOT A FRESNEL LENS, and the gap is worth stating: a first-order Fresnel is
 dozens of concentric annular prisms and there are four dish slots. This is
 the single refracting element that fits. The rings need a primitive that
-does not exist yet.
+does not exist yet. (It does now -- see "The Fresnel lens" above.)
 
 - `build.bat`'s test loop logged `cl` to nul and ran the stale binary
   regardless, so a test whose source stopped compiling went on printing the

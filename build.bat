@@ -52,6 +52,10 @@ rem lens is not a milestone either -- see its header. Same shape again.
 cl /nologo /std:c11 /W3 /O2 /DSOKOL_D3D11 /DSOKOL_WIN32_FORCE_MAIN /Fobuild\ /Febuild\lens.exe ^
     examples\lens\main.c source\display.c source\oracle.c %PURE% || exit /b 1
 
+rem fresnel is the lens example's answer -- see its header. Same shape.
+cl /nologo /std:c11 /W3 /O2 /DSOKOL_D3D11 /DSOKOL_WIN32_FORCE_MAIN /Fobuild\ /Febuild\fresnel.exe ^
+    examples\fresnel\main.c source\display.c source\oracle.c %PURE% || exit /b 1
+
 rem tools\bench times the GPU, so it compiles from the repository
 rem root with /I. -- it reaches sokol and hologram.h by the same paths a
 rem game would.
