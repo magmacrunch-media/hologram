@@ -61,6 +61,10 @@ rem root with /I. -- it reaches sokol and hologram.h by the same paths a
 rem game would.
 cl /nologo /std:c11 /W3 /O2 /DSOKOL_D3D11 /DSOKOL_WIN32_FORCE_MAIN /I. /Fobuild\ /Febuild\bench.exe ^
     tools\bench\bench.c source\display.c %PURE% || exit /b 1
+
+rem tools\beam is pure: the CPU intersections and Fresnel alone, no window.
+cl /nologo /std:c11 /W4 /O2 /I. /Fobuild\ /Febuild\beam.exe ^
+    tools\beam\beam.c %PURE% || exit /b 1
 exit /b 0
 
 :tests

@@ -123,4 +123,8 @@ build_example fresnel source/oracle.c
 $CC $CFLAGS $WARN $BACKEND -I. -o build/bench tools/bench/bench.c \
     build/display.o $PURE $LIBS
 
+# tools/beam is pure: the CPU intersections and Fresnel alone, no window.
+# shellcheck disable=SC2086
+$CC $CFLAGS $WARN -I. -o build/beam tools/beam/beam.c $PURE -lm
+
 echo "built into build/ for $UNAME ($BACKEND)"

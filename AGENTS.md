@@ -41,7 +41,10 @@ tools/                  dev tools that are not the engine: gldiff holds the
                         readback as Objective-C (both exist so a dialect can
                         be verified away from its own platform);
                         bench times the GPU per panel, and A/Bs one tracer
-                        against another on real hardware
+                        against another on real hardware; beam traces a
+                        lamp through a Fresnel panel and writes the beam's
+                        angular profile, which is how a lighthouse's flash
+                        length is derived rather than chosen
 build.bat               Windows build (finds vcvars64, builds examples + tests)
 ```
 

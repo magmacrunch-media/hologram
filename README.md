@@ -255,6 +255,31 @@ panels, on D3D11 and WebGL2 alike, because the extra indexed constant fetch
 costs more than the cross and normalize it saves. That is why the tracers
 derive the normal from the solve vectors rather than being handed it.
 
+### What a lighthouse throws
+
+```
+build\beam.exe --order 1 --panels 8 --period 5 --lamp 0.015 --json out.json
+```
+
+`tools/beam` is the CPU-only tool the Fresnel lens exists for. It puts a lamp
+of finite size at a panel's focus, follows every lamp point to every aperture
+point through the rings with the engine's own intersection and Fresnel
+functions, and bins the directions the light leaves in. That histogram is the
+far-field beam, and its width is the one number a lighthouse's published
+characteristic leaves out: a rotating drum sweeps each panel's beam past a
+fixed observer, so the flash lasts as long as the beam is wide divided by how
+fast the drum turns. On the standard focal distances, with an 8-panel drum on
+a 5 s period and a 15 mm lamp: a first-order lens (920 mm) throws a beam
+1.76° wide at half power and flashes for 0.39 s to 5%; a fourth-order lens
+(250 mm) throws 5.8° and flashes for 0.87 s. Two lights with the same period
+and different lenses do not flash for the same time, which Block Island
+Simulator's two lighthouses had been doing.
+
+The lamp's size is the input nobody publishes and the one the answer is most
+sensitive to -- 5 mm to 30 mm moves the first-order flash from 0.32 s to
+0.55 s -- so the tool prints it beside the answer, and the game that consumes
+the numbers records it as a choice.
+
 ### Engine modules
 
 Pure arithmetic is split from platform calls so the arithmetic is host

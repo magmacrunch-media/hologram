@@ -94,6 +94,16 @@ pick, caps, emit, save}.js` pack, inspect, pick, budget, emit and save it.
 `editor/roundtrip.c` re-run against the 220-slot block: 876 of 876 floats
 identical.
 
+`tools/beam` -- the tool the lens exists for. A lamp of finite size at a
+panel's focus, every lamp point traced to every aperture point through the
+rings with the engine's own intersection and Fresnel functions, the exit
+directions binned: the far-field beam, whose width divided by the drum's
+turning rate is the flash length a lighthouse's characteristic leaves out.
+First order, 8 panels, 5 s, 15 mm lamp: 1.76 degrees at half power, 0.39 s
+to 5%; fourth order: 5.8 degrees, 0.87 s. Only the dioptric belt is
+traced, the lamp is a disc, and its size is the input the answer is most
+sensitive to; the tool says all three.
+
 Not yet: the catadioptric bands a first-order lighthouse lens carries above
 and below its dioptric belt, where each ring works by refraction, total
 internal reflection and refraction. They are a second parametric band on
