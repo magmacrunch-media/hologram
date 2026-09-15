@@ -476,6 +476,12 @@ game to fail, and a second way to build a scene competing with the first.
 `sokol_glue`, `sokol_log`) by Andre Weissflog, vendored under
 `external/sokol/` and used under the zlib licence.
 
+## Support This Project
+
+If you find hologram useful, consider supporting its development:
+
+[![Sponsor](https://img.shields.io/badge/%E2%9D%A4_Sponsor-pink)](https://github.com/sponsors/magmacrunch-media)
+
 ## License
 
 [PolyForm Noncommercial 1.0.0](LICENSE): read it, learn from it, build on it,
