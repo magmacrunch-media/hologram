@@ -9,6 +9,10 @@
 #include "../external/sokol/sokol_gfx.h"
 #include "../external/sokol/sokol_log.h"
 #include "../external/sokol/sokol_glue.h"
+/* After sokol_gfx.h, which it draws through. Its implementation rides in
+   this TU with the others, under the same SOKOL_IMPL, so a game that compiles
+   display.c has text with no new source file to list. */
+#include "../external/sokol/sokol_debugtext.h"
 
 #include "display.h"
 
@@ -135,6 +139,8 @@ static struct {
     double time;
 } state;
 
+static void text_init(void);
+
 static void init_cb(void) {
     sg_setup(&(sg_desc){
         .environment = sglue_environment(),
@@ -212,6 +218,83 @@ static void init_cb(void) {
         .layout.attrs[0].format = SG_VERTEXFORMAT_FLOAT2,
         .label = "holo-quad-pipeline",
     });
+
+    text_init();
+}
+
+/* ---------------------------------------------------------------------- */
+/* Text. See display.h.                                                    */
+
+/* Eight pixels a glyph, which is what every sokol_debugtext font is. */
+#define HOLO_GLYPH_PX 8.0f
+
+/* Characters a frame may queue. sokol_debugtext defaults to 4096 and
+   SILENTLY IGNORES everything past it, and a shadowed line costs two draws a
+   character, so the ceiling is set here, on purpose, rather than met by
+   surprise: 8192 is forty full-width shadowed lines at scale 1 in a 640 px
+   window. (The number, and the lesson, are daffodil's.) */
+#define HOLO_TEXT_CHARS 8192
+
+static struct {
+    int ready;
+    int scale;
+    int queued;
+} text;
+
+static void text_init(void) {
+    sdtx_setup(&(sdtx_desc_t){
+        /* KC854 fills its 8 px cell, so words read as words rather than as
+           letter-spaced capitals. */
+        .fonts[0] = sdtx_font_kc854(),
+        .context.char_buf_size = HOLO_TEXT_CHARS,
+        .logger.func = slog_func,
+    });
+    text.ready = 1;
+    text.scale = 1;
+}
+
+void holo_text_begin(int scale) {
+    if (!text.ready) return;
+    if (scale < 1) scale = 1;
+    text.scale = scale;
+    /* The canvas is the window in glyph-scaled pixels, so a position given
+       in window pixels divides by the scale and then by the glyph to land on
+       the cell grid sokol_debugtext positions in. */
+    sdtx_canvas(sapp_widthf() / (float)scale, sapp_heightf() / (float)scale);
+    sdtx_origin(0.0f, 0.0f);
+    sdtx_home();
+}
+
+void holo_text_at(float px, float py, uint32_t rgba, const char *s) {
+    if (!text.ready || !s) return;
+    float g = HOLO_GLYPH_PX * (float)text.scale;
+    sdtx_pos(px / g, py / g);
+    sdtx_color1i(rgba);
+    sdtx_puts(s);
+    text.queued = 1;
+}
+
+void holo_text_shadowed(float px, float py, uint32_t rgba, const char *s) {
+    float o = (float)text.scale;
+    holo_text_at(px + o, py + o, 0xE0101010u, s);
+    holo_text_at(px, py, rgba, s);
+}
+
+void holo_text_outlined(float px, float py, uint32_t rgba, const char *s) {
+    float o = (float)text.scale;
+    holo_text_at(px - o, py - o, 0xF0101010u, s);
+    holo_text_at(px + o, py - o, 0xF0101010u, s);
+    holo_text_at(px - o, py + o, 0xF0101010u, s);
+    holo_text_at(px + o, py + o, 0xF0101010u, s);
+    holo_text_at(px, py, rgba, s);
+}
+
+float holo_text_width(const char *s) {
+    return s ? (float)strlen(s) * HOLO_GLYPH_PX * (float)text.scale : 0.0f;
+}
+
+float holo_text_line_height(void) {
+    return HOLO_GLYPH_PX * (float)text.scale;
 }
 
 void holo_display_frame(void) {
@@ -245,6 +328,13 @@ void holo_display_frame(void) {
     sg_apply_bindings(&(sg_bindings){ .vertex_buffers[0] = state.vbuf });
     sg_apply_uniforms(0, &ub);
     sg_draw(0, 3, 1);
+    /* Text, last of all and over everything: whatever before_frame queued.
+       Skipped whole when nothing was, so a frame with no text is the frame
+       it was before text existed. */
+    if (text.queued) {
+        sdtx_draw();
+        text.queued = 0;
+    }
     sg_end_pass();
     sg_commit();
 
@@ -448,6 +538,10 @@ int holo_display_read_frame(unsigned char *rgba, int w, int h) {
 #endif
 
 static void cleanup_cb(void) {
+    if (text.ready) {
+        sdtx_shutdown();
+        text.ready = 0;
+    }
     sg_shutdown();
 }
 

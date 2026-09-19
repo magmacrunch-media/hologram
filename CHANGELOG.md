@@ -4,6 +4,41 @@ All notable changes to the hologram engine are documented here.
 
 ## v0.2.0 (unreleased)
 
+### Text
+
+`holo_text_begin`, `_at`, `_shadowed`, `_outlined`, `_width` and
+`_line_height`, in `display.h`. A bitmap font at an integer scale, positioned
+in window pixels, drawn last in the pass over the tracer's quad. It wraps
+`sokol_debugtext` exactly as daffodil's `text.c` does, with the same font
+(KC854, which fills its cell so words read as words), and the header is
+vendored byte-identical from daffodil, whose `sokol_gfx.h` and `sokol_app.h`
+are this engine's to the hash.
+
+It was asked for by a game whose whole interface had ended up in the window's
+title bar because there was nowhere else to put a word, and whose title bar
+then turned out never to have shown anything (sokol blanks a title of 127
+characters or more, silently). The keys belong along the foot of the window,
+where Block Island Simulator has them.
+
+- **In `display.c`, not a new file**, because display.c is the only file that
+  talks to sokol and because both consumers list the engine's sokol-facing
+  sources by hand: a `text.c` would have stopped crystal-mirror-maze linking
+  until somebody added it to two build scripts. A game that compiles
+  display.c has text.
+- **A frame that queues no text draws none.** `sdtx_draw` is skipped whole
+  unless something was queued since the last frame, so every example is the
+  frame it was: all twelve re-run on D3D11, every cell as printed.
+- **The oracle reads the presented frame, text and all**, and the CPU tracer
+  draws no text. A game queues none on a frame it means to diff; the examples'
+  `diff_mode` flag is what says when. `display.h` says this in capitals.
+- The character ceiling is set on purpose (`HOLO_TEXT_CHARS`, 8192) because
+  sokol_debugtext's default is 4096 and everything past it is dropped without
+  a word, and an outlined line costs five characters for each one shown. The
+  number, and the lesson, are daffodil's.
+
+**Not yet:** wrapping, centring, or a second font. daffodil has all three and
+they come across when a game here has a page to set rather than a line.
+
 ### The lamp: a sun with a colour, and a sky that lights
 
 Two scene fields, and the first thing in the engine that is about a room

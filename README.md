@@ -298,7 +298,7 @@ testable, the discipline magnolia's `timestep.c` was extracted for.
 | `gpu_scene.c` | The scene as the shader's uniform block. |
 | `collision.c` | Capsule-vs-walls walking with gravity. |
 | `timestep.c` | Fixed-step accumulator (ported from magnolia). |
-| `display.c` | The only file that talks to sokol: window, device, quad, uniforms, frame readback. |
+| `display.c` | The only file that talks to sokol: window, device, quad, uniforms, frame readback, and text. |
 | `input.c` | Keys held and mouse look, folded per frame. |
 | `oracle.c` | The GPU-vs-CPU frame diff. |
 
@@ -466,7 +466,15 @@ No build step, no package manager, no dependency -- it is a page, like
 
 No ECS, no general physics engine, no mesh import, no skinned animation, no
 GUI toolkit. Neither target game needs any of them, and each would cost more
-than it returns. Scenes are built in code from primitives; collision is a
+than it returns.
+
+There IS text, which is not a toolkit: `holo_text_*` in `display.h`, a bitmap
+font at an integer scale, positioned in window pixels and drawn last in the
+frame over the traced image. It is enough for a line of keys along the foot
+of a window and a readout above it. A game queues its lines from
+`before_frame` and a frame that queues none is the frame it always was. **The
+oracle reads the presented frame, text and all**, so a game queues none on a
+frame it means to `--diff`. Scenes are built in code from primitives; collision is a
 capsule against axis-aligned walls.
 
 Scenes are still built in code. `holo_scene_write_json` writes one out, for
@@ -477,7 +485,7 @@ game to fail, and a second way to build a scene competing with the first.
 ## Dependencies
 
 [sokol](https://github.com/floooh/sokol) (`sokol_app`, `sokol_gfx`,
-`sokol_glue`, `sokol_log`) by Andre Weissflog, vendored under
+`sokol_glue`, `sokol_log`, `sokol_debugtext`) by Andre Weissflog, vendored under
 `external/sokol/` and used under the zlib licence.
 
 ## Support This Project

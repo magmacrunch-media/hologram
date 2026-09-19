@@ -14,6 +14,8 @@
  * pixel size, refreshed every frame; the shader letterboxes from there.
  */
 
+#include <stdint.h>
+
 struct sapp_event;
 
 /* Per-frame uniforms every hologram shader receives, in this layout. Keep it
@@ -88,6 +90,52 @@ void holo_display_frame(void);
 
 /* Seconds since init, as the uniforms will report it. */
 float holo_display_time(void);
+
+/* Text on the screen: a bitmap font, positioned in window pixels.
+ *
+ * Not a GUI toolkit and not a typesetter: eight-pixel glyphs at an integer
+ * scale, drawn last in the frame over the traced image, which is enough for a
+ * line of keys along the foot of a window and a readout above it, and is
+ * exactly what a game on this engine otherwise lacks completely. (A game
+ * without it ends up putting its whole interface in the window's title bar.
+ * One did.) It wraps sokol_debugtext, the same way daffodil's text.c does and
+ * with the same font, and lives here because display.c is the only file that
+ * talks to sokol: a game that compiles display.c has text, with no new source
+ * file to add to a build script.
+ *
+ * Queue a frame's text from before_frame; display draws the queue inside its
+ * pass after the tracer's quad, and a frame that queued nothing draws nothing
+ * and is the frame it always was.
+ *
+ * THE ORACLE READS THE PRESENTED FRAME, TEXT AND ALL. holo_oracle_diff
+ * compares what is on the screen with what the CPU tracer drew, and the CPU
+ * tracer draws no text, so a game must queue none on a frame it means to
+ * diff. Every example here already has a diff_mode flag that says when. */
+
+/* Start a frame's text at an integer scale: 1 is 8 px glyphs, 2 is 16. */
+void holo_text_begin(int scale);
+
+/* Queue a string with its top-left at (px, py), in window pixels from the
+   top left. rgba is 0xAABBGGRR, the order sokol_debugtext takes. */
+void holo_text_at(float px, float py, uint32_t rgba, const char *s);
+
+/* The same, drawn twice: a dark copy a pixel down and right, then the colour.
+   What keeps a line legible over a bright floor and a dark bench alike. */
+void holo_text_shadowed(float px, float py, uint32_t rgba, const char *s);
+
+/* Drawn five times: a dark copy at each diagonal, then the colour. A shadow
+   fails where what is behind the text is bright on the shadow's own side,
+   and a traced floor in full sun is exactly that: pale words over it lose
+   their top-left edges. An outline cannot, because the dark is on every
+   side. It costs five characters of HOLO_TEXT_CHARS for each one shown, so
+   it is for a few lines of heads-up display, not for a page. */
+void holo_text_outlined(float px, float py, uint32_t rgba, const char *s);
+
+/* The width one string will take at the current scale, and the height of a
+   line, in pixels, for a caller laying things out from the bottom or the
+   right. */
+float holo_text_width(const char *s);
+float holo_text_line_height(void);
 
 /* Copy the frame most recently drawn into rgba (w*h*4 bytes, rows top-down),
    which must match the real framebuffer size. Returns 1, or 0 where the
