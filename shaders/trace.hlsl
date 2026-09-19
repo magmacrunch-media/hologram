@@ -56,6 +56,10 @@ cbuffer params : register(b0) {
     float4 fres_albedo_mirror;
     float4 fres_glass;         /* x transmit, y ior, z disperse, w thick */
     float4 fres_ring;          /* x pitch, y rim, z lens count (0 or 1) */
+
+    /* The sun's colour, resolved on the CPU (an unset one arrives white),
+       and sky_light in its fourth lane. See gpu_scene.h and cpu_trace.h. */
+    float3 sun_color; float sky_light;
 };
 
 static const float T_MIN = 1e-3;      /* HOLO_T_MIN */
@@ -495,10 +499,22 @@ bool sun_blocked(float3 p) {
 
 float3 sky(float3 dir) {
     if (sun_disk_intensity > 0.0 && dot(dir, sun_dir) > sun_disk_cos) {
-        return float3(sun_disk_intensity, sun_disk_intensity,
-                      sun_disk_intensity);
+        return sun_color * sun_disk_intensity;
     }
     return lerp(horizon, zenith, 0.5 * (dir.y + 1.0));
+}
+
+/* The light a matte surface with normal n shows, per unit albedo: the flat
+   ambient stand-in, or the sky as an unoccluded dome with the sun on top.
+   cpu_trace.c's matte_light, statement for statement; the derivation is in
+   cpu_trace.h. */
+float3 matte_light(float3 n, float diffuse) {
+    if (sky_light > 0.0) {
+        float3 a = (horizon + zenith) * 0.5;
+        float3 b = (zenith - horizon) * (n.y / 3.0);
+        return sun_color * diffuse + (a + b) * sky_light;
+    }
+    return sun_color * (AMBIENT + (1.0 - AMBIENT) * diffuse);
 }
 
 /* holo_trace_ray: the stack walk, matching cpu_trace.c's caps, push order
@@ -581,7 +597,7 @@ float3 trace(float3 ro, float3 rd) {
         if (matte > 0.0) {
             float diffuse = max(dot(best_n, sun_dir), 0.0);
             if (diffuse > 0.0 && sun_blocked(p)) diffuse = 0.0;
-            float3 lambert = albedo * (AMBIENT + (1.0 - AMBIENT) * diffuse);
+            float3 lambert = albedo * matte_light(best_n, diffuse);
             color += p_tp * lambert * matte;
         }
 
@@ -829,7 +845,8 @@ float trace_lambda(float3 ro, float3 rd, float lambda_um) {
                 float diffuse = max(dot(best_n, sun_dir), 0.0);
                 if (diffuse > 0.0 && sun_blocked(p)) diffuse = 0.0;
                 float lambert = albedo_at(albedo, lambda_um)
-                              * (AMBIENT + (1.0 - AMBIENT) * diffuse);
+                              * albedo_at(matte_light(best_n, diffuse),
+                                          lambda_um);
                 intensity += p_srow.x * lambert * matte;
             }
 

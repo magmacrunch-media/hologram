@@ -251,6 +251,12 @@
             out.push('    .sun_disk_intensity = ' +
                      fl(sky.sun_disk_intensity) + ',');
         }
+        if (!isZeroV3(sky.sun_color)) {
+            out.push('    .sun_color = ' + v3(sky.sun_color) + ',');
+        }
+        if (sky.sky_light) {
+            out.push('    .sky_light = ' + fl(sky.sky_light) + ',');
+        }
 
         out.push('};');
         return out.join('\n') + '\n';

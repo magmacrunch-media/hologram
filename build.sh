@@ -117,6 +117,10 @@ build_example lens source/oracle.c
 # fresnel is the lens example's answer -- see its header. Same shape.
 build_example fresnel source/oracle.c
 
+# lamp is what puts sun_color and sky_light under the oracle -- see its
+# header. Same shape.
+build_example lamp source/oracle.c
+
 # tools/bench: GPU cost per panel. It has a real GPU clock only on
 # D3D11; elsewhere it falls back to the frame clock and says so.
 # shellcheck disable=SC2086

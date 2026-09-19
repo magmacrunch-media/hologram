@@ -162,7 +162,9 @@
         out += line('    ', 'zenith', v3(sky.zenith), ',\n');
         out += line('    ', 'sun_disk_cos', num(sky.sun_disk_cos || 0), ',\n');
         out += line('    ', 'sun_disk_intensity',
-                    num(sky.sun_disk_intensity || 0), '\n');
+                    num(sky.sun_disk_intensity || 0), ',\n');
+        out += line('    ', 'sun_color', v3(sky.sun_color), ',\n');
+        out += line('    ', 'sky_light', num(sky.sky_light || 0), '\n');
         out += '  }\n';
         out += '}\n';
         return out;

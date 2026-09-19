@@ -33,6 +33,8 @@ void holo_gpu_scene_fill(HoloGpuScene *gpu, const HoloScene *scene,
     gpu->sun_disk_cos = scene->sun_disk_cos;
     put3(gpu->floor_b, scene->floor_b);
     gpu->sun_disk_intensity = scene->sun_disk_intensity;
+    put3(gpu->sun_color, holo_sun_color(scene));
+    gpu->sky_light = scene->sky_light;
 
     for (int i = 0; i < scene->sphere_count; i++) {
         put3(gpu->sph_center_radius[i], scene->spheres[i].center);

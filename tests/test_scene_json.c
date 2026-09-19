@@ -174,6 +174,8 @@ int main(void) {
     scene.zenith = hv3(0.2f, 0.4f, 0.8f);
     scene.sun_disk_cos = 0.9995f;
     scene.sun_disk_intensity = 40.0f;
+    scene.sun_color = hv3(1.0f, 0.75f, 0.0f);
+    scene.sky_light = 0.5f;
 
     HoloCamera cam = holo_camera_make(hv3(0, 1, 5), hv3(0, 1, 0), hv3(0, 1, 0),
                                       60.0f, 4.0f / 3.0f);
@@ -301,6 +303,9 @@ int main(void) {
         check_exact(sky, "sun_disk_intensity", 40.0f, "sun disk intensity");
         check(strstr(sky, "\"sun_dir\": [0.169, 0.507, 0.845]") != 0,
               "sun direction keeps its short spelling");
+        check(strstr(sky, "\"sun_color\": [1, 0.75, 0]") != 0,
+              "sun colour is written as the scene holds it");
+        check_exact(sky, "sky_light", 0.5f, "sky light");
     }
 
     /* An empty scene must still be a document, not a file with a dangling

@@ -56,6 +56,11 @@ rem fresnel is the lens example's answer -- see its header. Same shape.
 cl /nologo /std:c11 /W3 /O2 /DSOKOL_D3D11 /DSOKOL_WIN32_FORCE_MAIN /Fobuild\ /Febuild\fresnel.exe ^
     examples\fresnel\main.c source\display.c source\oracle.c %PURE% || exit /b 1
 
+rem lamp is what puts sun_color and sky_light under the oracle -- see its
+rem header. Same shape.
+cl /nologo /std:c11 /W3 /O2 /DSOKOL_D3D11 /DSOKOL_WIN32_FORCE_MAIN /Fobuild\ /Febuild\lamp.exe ^
+    examples\lamp\main.c source\display.c source\oracle.c %PURE% || exit /b 1
+
 rem tools\bench times the GPU, so it compiles from the repository
 rem root with /I. -- it reaches sokol and hologram.h by the same paths a
 rem game would.

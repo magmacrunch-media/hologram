@@ -4,6 +4,66 @@ All notable changes to the hologram engine are documented here.
 
 ## v0.2.0 (unreleased)
 
+### The lamp: a sun with a colour, and a sky that lights
+
+Two scene fields, and the first thing in the engine that is about a room
+rather than about an optic. They came from a game: a lithography bay is lit
+by a yellow safe light from its ceiling, and hologram's one light was a white
+sun from infinity with a flat tenth of the albedo filling every shadow, so a
+lamp straight overhead left every wall in the room at exactly that tenth.
+
+- **`sun_color`.** What the sun lights matte surfaces with, and the colour
+  of its disk, which `sky()` used to hard-code as neutral. ALL ZERO READS AS
+  WHITE, through `holo_sun_color()`, so that every scene written before the
+  field existed is the scene it always was; `gpu_scene.c` sends the GPU the
+  resolved colour, and no shader carries the convention. In the spectral walk
+  it is read through `holo_albedo_at` like every other RGB in the scene,
+  whose blue band has run out by 0.51 um, so `(1, 1, 0)` is a fair long-pass
+  near 500 nm. That is a safe light by the spectrum and not by a tint: a
+  grating under it does not show a yellowed violet order, it shows none.
+- **`sky_light`.** Zero is the flat `HOLO_AMBIENT` stand-in exactly as
+  before. Above zero the stand-in is replaced by the sky itself, as an
+  unoccluded dome. The sky is `a + b * dir.y`, and the hemisphere integral of
+  `w (w . n)` is `(2 pi / 3) n`, so the irradiance is
+  `pi a + (2 pi / 3) b n.y` and a Lambert surface shows
+  `albedo * (a + (2/3) b n.y)` of it, with the sun's own share added on top
+  and no ambient taken out of it. Unoccluded is the approximation, and it is
+  the one `HOLO_AMBIENT` always made, given a colour and a direction it did
+  not have. `cpu_trace.h` has the derivation.
+- **The test is the white furnace**: a white matte surface inside a uniform
+  sky, with no sun on it, shows exactly the sky's radiance whichever way it
+  faces. Then a graded sky at three normals (0.7, 0.5, 0.3 for horizon 0.2
+  and zenith 0.8), the sun adding rather than sharing, yellow light leaving
+  420 and 467 nm black on a white panel and 550 and 650 nm whole, and unset
+  against explicit white **bit for bit** in both walks. 36 new checks in
+  `tests/test_trace.c`, landed and green before any shader was touched.
+- **One uniform slot**, `sun_color` with `sky_light` in its fourth lane,
+  appended after the Fresnel block so nothing moved: 221 of the 224 float4
+  WebGL2 guarantees, three left. `test_gpu_layout.c` holds both names, and
+  the editor's packer is still bit-identical to C on every field but the
+  CIE weights (848 of 880, 32 within rounding, on the new example).
+- **Every older example is unchanged to the digit.** All eleven were re-run
+  on D3D11 and on Linux GL and every cell of the pass table came back as
+  printed. That is the promise, and it is also the problem: a default is the
+  one value under which a dialect that forgot the field still passes.
+- So **`examples/lamp`** sets both, the way `shadows` exists for
+  `sun_blocked`. A room corner under a yellow lamp straight overhead: two
+  vertical walls the sun cannot reach, a slab with skylit floor beneath it,
+  a white ball, and a long grating leaned at the camera so the lamp's first
+  order comes down the lens. `--white` shows the band whole, red to violet;
+  without it the violet end is absent. 0.0030 · 0.001% on D3D11,
+  0.0000 · 0.000% on Linux GL, 0.0028 · 0.000% in WebGL2, and the RGB walk
+  (`--rgb`) 0.0027 and 0.0000.
+- `scene_json.c` writes both fields as the scene holds them (an unset colour
+  as the zeros it is), and the editor's schema, save and C emitter carry
+  them.
+
+**Not yet:** occlusion of the sky. A surface under a bench is lit as if the
+bench were not there, which reads as soft fill and is wrong in a closed box.
+And the sun and the sky ADD, so a scene that turns `sky_light` up has to turn
+`sun_color` down to keep a white floor short of 1; the colour carries the
+lamp's strength as well as its hue, and nothing warns when it does not.
+
 ### The Fresnel lens
 
 `HoloFresnel`: a lens of concentric prism rings as ONE primitive. It stores

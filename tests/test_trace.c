@@ -783,9 +783,139 @@ static void test_a_fresnel_is_not_a_stone(void) {
     check(lit > shaded * 1.5f, "glass lets the sun through and a mirror does not");
 }
 
+/* One upward-facing matte panel, one facing sideways and one facing down,
+   over nothing: three normals for the lighting laws below to be read off. */
+static HoloScene three_panels(void) {
+    HoloScene s = {
+        .rects = {
+            { .corner = hv3(-1, 0, -1), .edge_u = hv3(2, 0, 0),
+              .edge_v = hv3(0, 0, 2), .albedo = hv3(0.8f, 0.6f, 0.4f) },
+            { .corner = hv3(10, -1, -1), .edge_u = hv3(0, 2, 0),
+              .edge_v = hv3(0, 0, 2), .albedo = hv3(0.8f, 0.6f, 0.4f) },
+        },
+        .rect_count = 2,
+        .sun_dir = hv3(0, 1, 0),
+    };
+    return s;
+}
+
+static const HoloRay ONTO_THE_TOP  = { { 0, 5, 0 },  { 0, -1, 0 } };
+static const HoloRay ONTO_THE_BACK = { { 0, -5, 0 }, { 0, 1, 0 } };
+/* Half a metre up, so as not to run along the first panel's own plane. */
+static const HoloRay ONTO_THE_SIDE = { { 5, 0.5f, 0 }, { 1, 0, 0 } };
+
+static void test_sun_color(void) {
+    printf("trace: the sun has a colour, and none is white\n");
+    HoloScene s = three_panels();
+
+    check_close(holo_sun_color(&s).x, 1.0f, "an unset sun colour reads white");
+    check_close(holo_sun_color(&s).z, 1.0f, "in every channel");
+
+    /* Unset and explicitly white are the same scene, to the last bit: the
+       promise that no scene written before this field changed. */
+    HoloV3 unset = holo_trace_ray(&s, ONTO_THE_TOP);
+    float unset_l = holo_trace_lambda(&s, ONTO_THE_TOP, 0.55f);
+    s.sun_color = hv3(1, 1, 1);
+    HoloV3 white = holo_trace_ray(&s, ONTO_THE_TOP);
+    check(unset.x == white.x && unset.y == white.y && unset.z == white.z,
+          "unset and white trace bit for bit alike, RGB");
+    check(unset_l == holo_trace_lambda(&s, ONTO_THE_TOP, 0.55f),
+          "and spectrally");
+    check_close(white.x, 0.8f, "full white sun still returns exactly the albedo");
+
+    /* A coloured sun multiplies, channel by channel, light and shade alike
+       (the ambient stand-in is the sun's own bounce, so it takes the tint). */
+    s.sun_color = hv3(1.0f, 0.5f, 0.0f);
+    HoloV3 lit = holo_trace_ray(&s, ONTO_THE_TOP);
+    check_close(lit.x, 0.8f, "red passes whole");
+    check_close(lit.y, 0.3f, "green at half");
+    check_close(lit.z, 0.0f, "and no blue arrives to be reflected");
+    HoloV3 shade = holo_trace_ray(&s, ONTO_THE_BACK);
+    check_close(shade.y, 0.6f * 0.5f * HOLO_AMBIENT, "the shaded face is tinted too");
+
+    /* The safe light. Yellow has no blue, and holo_albedo_at's blue band
+       runs out by 0.51 um, so below 0.475 a white panel under it is black
+       and above 0.51 it is as bright as under white light. */
+    s.rects[0].albedo = hv3(1, 1, 1);
+    s.sun_color = hv3(1, 1, 0);
+    check_close(holo_trace_lambda(&s, ONTO_THE_TOP, 0.42f), 0.0f,
+                "yellow light: nothing at 420 nm");
+    check_close(holo_trace_lambda(&s, ONTO_THE_TOP, 0.4673f), 0.0f,
+                "nor at 467 nm");
+    check_close(holo_trace_lambda(&s, ONTO_THE_TOP, 0.55f), 1.0f,
+                "all of it at 550 nm");
+    check_close(holo_trace_lambda(&s, ONTO_THE_TOP, 0.65f), 1.0f,
+                "and at 650 nm");
+
+    /* The disk is the sun, so it wears the colour. */
+    s.sun_disk_cos = 0.99f;
+    s.sun_disk_intensity = 20.0f;
+    HoloRay up = { .origin = hv3(50, 1, 0), .dir = hv3(0, 1, 0) };
+    HoloV3 disk = holo_trace_ray(&s, up);
+    check_close(disk.x, 20.0f, "the disk is its intensity in red");
+    check_close(disk.z, 0.0f, "and absent in blue");
+    check_close(holo_trace_lambda(&s, up, 0.42f), 0.0f,
+                "a yellow sun has no 420 nm disk for a grating to throw");
+}
+
+static void test_sky_light(void) {
+    printf("trace: the sky as a light, by the white furnace\n");
+    HoloScene s = three_panels();
+    s.rects[0].albedo = hv3(1, 1, 1);
+    s.rects[1].albedo = hv3(1, 1, 1);
+
+    /* THE WHITE FURNACE. A white matte surface inside a uniform sky, with no
+       sun on it, shows exactly the sky's radiance whichever way it faces:
+       it cannot be told from the sky behind it. */
+    s.horizon = hv3(0.5f, 0.4f, 0.3f);
+    s.zenith = s.horizon;
+    s.sky_light = 1.0f;
+    HoloV3 back = holo_trace_ray(&s, ONTO_THE_BACK);
+    HoloV3 side = holo_trace_ray(&s, ONTO_THE_SIDE);
+    check_close(back.x, 0.5f, "furnace: facing down, r");
+    check_close(back.y, 0.4f, "g");
+    check_close(back.z, 0.3f, "b");
+    check_close(side.x, 0.5f, "furnace: facing sideways, the same");
+    check_close(side.z, 0.3f, "in every channel");
+
+    /* The sun adds to the sky; it does not share a budget with it. */
+    HoloV3 top = holo_trace_ray(&s, ONTO_THE_TOP);
+    check_close(top.x, 1.0f + 0.5f, "sunlit and skylit: the two add");
+    s.sun_color = hv3(1, 1, 0);
+    top = holo_trace_ray(&s, ONTO_THE_TOP);
+    check_close(top.z, 0.3f, "under a yellow sun the blue is the sky's alone");
+    s.sun_color = hv3(0, 0, 0);
+
+    /* A graded sky: L = a + b y, E = pi a + (2 pi / 3) b n.y, so a Lambert
+       surface shows a + (2/3) b n.y. Horizon 0.2 and zenith 0.8 make
+       a = 0.5 and b = 0.3: 0.7 facing up, 0.5 on edge, 0.3 facing down. */
+    s.horizon = hv3(0.2f, 0.2f, 0.2f);
+    s.zenith = hv3(0.8f, 0.8f, 0.8f);
+    s.sun_dir = hv3(0, -1, 0);      /* the sun below, lighting the back */
+    check_close(holo_trace_ray(&s, ONTO_THE_TOP).x, 0.7f, "graded sky, facing up");
+    check_close(holo_trace_ray(&s, ONTO_THE_SIDE).x, 0.5f, "on edge");
+    s.sun_dir = hv3(0, 1, 0);
+    check_close(holo_trace_ray(&s, ONTO_THE_BACK).x, 0.3f, "facing down");
+
+    /* It scales, it takes the albedo, and the spectral walk agrees. */
+    s.sky_light = 0.5f;
+    check_close(holo_trace_ray(&s, ONTO_THE_SIDE).x, 0.25f, "half the sky light");
+    s.rects[1].albedo = hv3(0.4f, 0.4f, 0.4f);
+    check_close(holo_trace_ray(&s, ONTO_THE_SIDE).x, 0.10f, "times the albedo");
+    check_close(holo_trace_lambda(&s, ONTO_THE_SIDE, 0.55f), 0.10f,
+                "and the same at 550 nm");
+
+    /* Off, it is the old stand-in exactly. */
+    s.sky_light = 0.0f;
+    check_close(holo_trace_ray(&s, ONTO_THE_SIDE).x, 0.4f * HOLO_AMBIENT,
+                "sky_light 0 is HOLO_AMBIENT, as it always was");
+}
+
 int main(void) {
     test_camera();
     test_shading();
+    test_sun_color();
+    test_sky_light();
     test_image();
     test_mirror_image();
     test_corridor();

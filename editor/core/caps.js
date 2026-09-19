@@ -32,7 +32,7 @@
         dishes: 'HOLO_MAX_DISHES. Dishes past this are not traced at all.',
         fresnels:
             'HOLO_MAX_FRESNELS. One lens, in five scalar uniform slots: the ' +
-            'block sits at 220 of the 224 float4 WebGL2 guarantees a fragment ' +
+            'block sits at 221 of the 224 float4 WebGL2 guarantees a fragment ' +
             'shader, and a second lens would not fit. Past this, not traced.',
         gpu_gratings:
             'Gratings live in two scalar uniform slots, not an array, because ' +

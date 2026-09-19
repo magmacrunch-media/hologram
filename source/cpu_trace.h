@@ -195,7 +195,42 @@ typedef struct {
        paraboloid's focus every point of the dish does. */
     float  sun_disk_cos;
     float  sun_disk_intensity;
+
+    /* The sun's colour: what it lights matte surfaces with, and the colour
+       of its disk. ALL ZERO READS AS WHITE, so every scene written before
+       this field existed is the scene it always was; a black sun is spelled
+       by pointing it at nothing. In the spectral walk the colour is read
+       through holo_albedo_at like every other RGB in the scene, whose blue
+       band ends by 0.51 um -- so (1, 1, 0) is a fair long-pass filter near
+       500 nm, which is what a lithography bay's safe light is. */
+    HoloV3 sun_color;
+
+    /* Who fills the shadows. Zero (the default) is the flat HOLO_AMBIENT
+       stand-in above, exactly as before. Above zero, that stand-in is
+       replaced by the sky itself, as an UNOCCLUDED dome lighting every matte
+       surface, scaled by this number. The sky is a + b * dir.y with
+       a = (horizon + zenith) / 2 and b = (zenith - horizon) / 2, and the
+       irradiance of that on a surface with normal n integrates in closed
+       form, since the hemisphere integral of w (w . n) is (2 pi / 3) n:
+
+           E(n) = pi * a + (2 pi / 3) * b * n.y
+
+       so a Lambert surface shows albedo * (a + (2/3) b n.y) of it, to which
+       the sun's own albedo * sun_color * (n . sun) is added, with no
+       ambient share taken out of it. A uniform sky returns a white matte
+       surface at exactly the sky's radiance whichever way it faces: the
+       white furnace, which is the test. Unoccluded is the approximation --
+       a surface under a bench is lit as if the bench were not there --
+       and it is the same one HOLO_AMBIENT always made, with a colour and a
+       direction it did not have. This is what lets a room be lit by its
+       ceiling: make the sky the ceiling's colour and turn this up. */
+    float  sky_light;
 } HoloScene;
+
+/* scene->sun_color with the all-zero default resolved to white. Shared by
+   the tracer and by gpu_scene.c, which sends the GPU the resolved colour so
+   that no shader has to know the convention. */
+HoloV3 holo_sun_color(const HoloScene *scene);
 
 /* The color a single ray sees, mirror bounces included. RGB light: glass
    refracts at its D-line index, dispersion invisible. */

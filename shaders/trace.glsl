@@ -25,7 +25,7 @@
  * offsetof(HoloGpuScene, ...) / 16, so the two cannot drift apart quietly.
  */
 
-uniform vec4 params[220];   /* sizeof(HoloGpuScene) / 16 */
+uniform vec4 params[221];   /* sizeof(HoloGpuScene) / 16 */
 
 /* HoloDisplayUniforms, the header every hologram shader receives. */
 #define res                 params[0].xy
@@ -87,6 +87,10 @@ uniform vec4 params[220];   /* sizeof(HoloGpuScene) / 16 */
 #define fres_albedo_mirror  params[217]
 #define fres_glass          params[218]
 #define fres_ring           params[219]
+/* The sun's colour, resolved on the CPU (an unset one arrives white), and
+   sky_light in its fourth lane. See gpu_scene.h and cpu_trace.h. */
+#define sun_color           params[220].xyz
+#define sky_light           params[220].w
 
 const float T_MIN = 1e-3;      /* HOLO_T_MIN */
 const float AMBIENT = 0.1;     /* HOLO_AMBIENT */
@@ -519,10 +523,22 @@ bool sun_blocked(vec3 p) {
 
 vec3 sky(vec3 dir) {
     if (sun_disk_intensity > 0.0 && dot(dir, sun_dir) > sun_disk_cos) {
-        return vec3(sun_disk_intensity, sun_disk_intensity,
-                    sun_disk_intensity);
+        return sun_color * sun_disk_intensity;
     }
     return mix(horizon, zenith, 0.5 * (dir.y + 1.0));
+}
+
+/* The light a matte surface with normal n shows, per unit albedo: the flat
+   ambient stand-in, or the sky as an unoccluded dome with the sun on top.
+   cpu_trace.c's matte_light, statement for statement; the derivation is in
+   cpu_trace.h. */
+vec3 matte_light(vec3 n, float diffuse) {
+    if (sky_light > 0.0) {
+        vec3 a = (horizon + zenith) * 0.5;
+        vec3 b = (zenith - horizon) * (n.y / 3.0);
+        return sun_color * diffuse + (a + b) * sky_light;
+    }
+    return sun_color * (AMBIENT + (1.0 - AMBIENT) * diffuse);
 }
 
 /* holo_trace_ray: the stack walk, matching cpu_trace.c's caps, push order
@@ -605,7 +621,7 @@ vec3 trace(vec3 ro, vec3 rd) {
         if (matte > 0.0) {
             float diffuse = max(dot(best_n, sun_dir), 0.0);
             if (diffuse > 0.0 && sun_blocked(p)) diffuse = 0.0;
-            vec3 lambert = albedo * (AMBIENT + (1.0 - AMBIENT) * diffuse);
+            vec3 lambert = albedo * matte_light(best_n, diffuse);
             color += p_tp * lambert * matte;
         }
 
@@ -854,7 +870,8 @@ float trace_lambda(vec3 ro, vec3 rd, float lambda_um) {
                 float diffuse = max(dot(best_n, sun_dir), 0.0);
                 if (diffuse > 0.0 && sun_blocked(p)) diffuse = 0.0;
                 float lambert = albedo_at(albedo, lambda_um)
-                              * (AMBIENT + (1.0 - AMBIENT) * diffuse);
+                              * albedo_at(matte_light(best_n, diffuse),
+                                          lambda_um);
                 intensity += p_srow.x * lambert * matte;
             }
 

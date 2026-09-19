@@ -54,6 +54,7 @@ static Field fields[] = {
     F(grat1_groove_idx), F(grat1_period_w), F(grat_w2),
     F(fres_center_focal), F(fres_axis_r0), F(fres_albedo_mirror),
     F(fres_glass), F(fres_ring),
+    F(sun_color), F(sky_light),
 };
 
 static const int FIELD_COUNT = (int)(sizeof fields / sizeof fields[0]);

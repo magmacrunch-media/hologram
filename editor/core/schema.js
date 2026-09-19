@@ -210,7 +210,17 @@
         { key: 'sun_disk_intensity', kind: 'float', min: 0, max: 200, step: 1,
           help: 'Zero turns the disk off, which is the default. This is what ' +
                 "makes focusing visible: at a paraboloid's focus every point " +
-                'of the dish shows you the sun.' }
+                'of the dish shows you the sun.' },
+        { key: 'sun_color', kind: 'color',
+          help: 'What the sun lights matte surfaces with, and the colour of ' +
+                'its disk. All zero reads as white. Spectrally, (1, 1, 0) is ' +
+                'a long-pass near 500 nm: a safe light.' },
+        { key: 'sky_light', kind: 'float', min: 0, max: 4, step: 0.05,
+          help: 'Zero fills shadows with the flat ambient stand-in. Above ' +
+                'zero the sky lights every matte surface instead, as an ' +
+                'unoccluded dome scaled by this: albedo * (a + (2/3) b n.y), ' +
+                'with the sun added on top. Make the sky a ceiling colour ' +
+                'and a room is lit by its ceiling.' }
     ];
 
     /* A wall is an axis-aligned box, and the only thing in the editor that

@@ -170,13 +170,38 @@ static int sun_blocked(const HoloScene *scene, HoloV3 point) {
     return 0;
 }
 
+HoloV3 holo_sun_color(const HoloScene *scene) {
+    HoloV3 c = scene->sun_color;
+    if (c.x == 0.0f && c.y == 0.0f && c.z == 0.0f) {
+        return hv3(1.0f, 1.0f, 1.0f);
+    }
+    return c;
+}
+
 static HoloV3 sky(const HoloScene *scene, HoloV3 dir) {
     if (scene->sun_disk_intensity > 0.0f &&
         hv3_dot(dir, scene->sun_dir) > scene->sun_disk_cos) {
-        float i = scene->sun_disk_intensity;
-        return hv3(i, i, i);
+        return hv3_scale(holo_sun_color(scene), scene->sun_disk_intensity);
     }
     return hv3_lerp(scene->horizon, scene->zenith, 0.5f * (dir.y + 1.0f));
+}
+
+/* The light a matte surface with normal n shows, per unit albedo, given the
+   sun's share `diffuse` (its cosine, already zeroed in shadow). Two models,
+   chosen by scene->sky_light and derived in cpu_trace.h: the flat ambient
+   stand-in, under which full sun returns exactly the albedo, or the sky as
+   an unoccluded dome with the sun added on top. An RGB triple either way;
+   the spectral walk reads it through holo_albedo_at. Mirrored statement for
+   statement as matte_light() in each shader. */
+static HoloV3 matte_light(const HoloScene *scene, HoloV3 n, float diffuse) {
+    HoloV3 sun = holo_sun_color(scene);
+    if (scene->sky_light > 0.0f) {
+        HoloV3 a = hv3_scale(hv3_add(scene->horizon, scene->zenith), 0.5f);
+        HoloV3 b = hv3_scale(hv3_sub(scene->zenith, scene->horizon), n.y / 3.0f);
+        return hv3_add(hv3_scale(sun, diffuse),
+                       hv3_scale(hv3_add(a, b), scene->sky_light));
+    }
+    return hv3_scale(sun, HOLO_AMBIENT + (1.0f - HOLO_AMBIENT) * diffuse);
 }
 
 static float max3(HoloV3 v) {
@@ -289,8 +314,8 @@ HoloV3 holo_trace_ray(const HoloScene *scene, HoloRay primary) {
             if (diffuse > 0.0f && sun_blocked(scene, hit.point)) {
                 diffuse = 0.0f;
             }
-            HoloV3 lambert = hv3_scale(surf.albedo,
-                                       HOLO_AMBIENT + (1.0f - HOLO_AMBIENT) * diffuse);
+            HoloV3 lambert = hv3_mul(surf.albedo,
+                                     matte_light(scene, hit.normal, diffuse));
             color = hv3_add(color, hv3_mul(p.tp, hv3_scale(lambert, matte)));
         }
 
@@ -476,8 +501,9 @@ float holo_trace_lambda(const HoloScene *scene, HoloRay primary,
                     diffuse = 0.0f;
                 }
                 float lambert = holo_albedo_at(surf.albedo, lambda_um)
-                              * (HOLO_AMBIENT
-                                 + (1.0f - HOLO_AMBIENT) * diffuse);
+                              * holo_albedo_at(
+                                    matte_light(scene, hit.normal, diffuse),
+                                    lambda_um);
                 intensity += p.srow.i * lambert * matte;
             }
 

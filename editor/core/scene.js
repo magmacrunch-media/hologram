@@ -67,7 +67,10 @@
         ['fres_axis_r0', 1, 216],
         ['fres_albedo_mirror', 1, 217],
         ['fres_glass', 1, 218],
-        ['fres_ring', 1, 219]
+        ['fres_ring', 1, 219],
+        /* The sun's colour, resolved (unset arrives white), with sky_light
+           in its fourth lane. Appended again. */
+        ['sun_color', 1, 220]
     ];
 
     /* Slot base per field, and the check that the declared bases and the
@@ -88,9 +91,9 @@
         return at;
     }());
 
-    if (TOTAL_SLOTS !== 220) {
+    if (TOTAL_SLOTS !== 221) {
         throw new Error('scene.js layout: ' + TOTAL_SLOTS +
-                        ' slots, but shaders/trace.glsl declares vec4 params[220]');
+                        ' slots, but shaders/trace.glsl declares vec4 params[221]');
     }
 
     var TOTAL_FLOATS = TOTAL_SLOTS * 4;
@@ -159,6 +162,15 @@
         out[SLOT.floor_a * 4 + 3] = sky.sun_disk_cos || 0;
         put3(out, SLOT.floor_b * 4, v(floor.floor_b));
         out[SLOT.floor_b * 4 + 3] = sky.sun_disk_intensity || 0;
+
+        /* holo_sun_color: an all-zero (or absent) colour is white, and it is
+           the RESOLVED colour that is packed, as gpu_scene.c does. */
+        var sun = v(sky.sun_color);
+        if (sun.x === 0 && sun.y === 0 && sun.z === 0) {
+            sun = { x: 1, y: 1, z: 1 };
+        }
+        put3(out, SLOT.sun_color * 4, sun);
+        out[SLOT.sun_color * 4 + 3] = sky.sky_light || 0;
 
         for (i = 0; i < spheres.length && i < MAX_SPHERES; i++) {
             var s = spheres[i];

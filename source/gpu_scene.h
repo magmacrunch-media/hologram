@@ -84,6 +84,12 @@ typedef struct {
     float fres_albedo_mirror[4]; /* xyz albedo, w mirror */
     float fres_glass[4];         /* x transmit, y ior, z disperse, w thick */
     float fres_ring[4];          /* x pitch, y rim, z lens count (0 or 1) */
+
+    /* The sun's colour, ALREADY RESOLVED (holo_sun_color: an all-zero scene
+       field arrives here as white, so no shader carries that convention),
+       with sky_light riding in its fourth lane. Appended, so nothing moves:
+       221 of WebGL2's 224, and three left. */
+    float sun_color[3];  float sky_light;
 } HoloGpuScene;
 
 /* Write scene and camera into the block. The camera's aspect is NOT carried:

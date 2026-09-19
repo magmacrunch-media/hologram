@@ -219,7 +219,12 @@ int holo_scene_write_json(const char *path, const HoloScene *scene,
     wfield_v3(f, "    ", "horizon", scene->horizon, ",\n");
     wfield_v3(f, "    ", "zenith", scene->zenith, ",\n");
     wfield_f(f, "    ", "sun_disk_cos", scene->sun_disk_cos, ",\n");
-    wfield_f(f, "    ", "sun_disk_intensity", scene->sun_disk_intensity, "\n");
+    wfield_f(f, "    ", "sun_disk_intensity", scene->sun_disk_intensity, ",\n");
+    /* As the scene holds it, not as holo_sun_color resolves it: an unset
+       colour is written as the zeros it is, and whoever reads this applies
+       the same convention the tracer does. */
+    wfield_v3(f, "    ", "sun_color", scene->sun_color, ",\n");
+    wfield_f(f, "    ", "sky_light", scene->sky_light, "\n");
     fputs("  }\n", f);
 
     fputs("}\n", f);

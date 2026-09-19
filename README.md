@@ -78,6 +78,7 @@ accept `--dump`, which writes that comparison's inputs out for `tools/gldiff`.
 | `shadows` | What blocks the sun and what deliberately does not: a dish, a matte sphere and an opaque panel casting; a glass ball and a polarizer casting nothing. |
 | `lens` | Two lenses of the same glass index and different dispersion, seen from their shared focus. Run with `--spectral`: the low-dispersion one shows a thin coloured ring and the high-dispersion one spreads the sun into concentric spectra. |
 | `fresnel` | The lens example's solid lens cut into thirteen rings -- same glass, rim and focal length, a fifth the thickness -- seen from its focus. The aperture fills with sun and the risers draw the thin dark circles a lighthouse lens shows. `--spectral` fringes each ring on its own. |
+| `lamp` | A room under a yellow lamp: a sun with a colour, and a sky that lights what the sun cannot. The vertical walls get nothing from a lamp straight overhead and are lit by the ceiling instead; the floor under a slab has lost the sun and kept the sky; and a grating leaned at the camera throws the lamp's first order down the lens with its violet end simply absent, because a yellow sun has no 420 to 467 nm to throw. `--white` is the same room under a white lamp, with the whole band; `--rgb` takes the other walk. |
 
 `m7_room`, `m8_furnace` and `m9_spectrum` are interactive: click to capture the
 mouse, `WASD` to walk, `Space` to jump, `T` to toggle spectral tracing, `Escape`
@@ -131,6 +132,7 @@ pixels off by more than 8/255. Every one passes.
 | `shadows` | who casts one, and the two who do not | 0.0077 · 0.010% | 0.0066 · 0.115% | 0.0116 · 0.021% |
 | `lens` | refracting dishes, chromatic aberration | 0.0348 · 0.000% | 0.0129 · 0.000% | 0.0352 · 0.000% |
 | `fresnel` | a Fresnel lens as one primitive, its rings computed | 0.0404 · 0.038% | 0.0225 · 0.032% | 0.0725 · 0.040% |
+| `lamp` | a coloured sun, and the sky as a light | 0.0030 · 0.001% | 0.0000 · 0.000% | 0.0028 · 0.000% |
 
 `shadows` is the row to copy when a decision gets duplicated into the
 dialects: it exists because sun_blocked was stated four times and no frame
@@ -165,12 +167,12 @@ of the porting work is written but unproven, and should be read that way.
 
 | path | state |
 |---|---|
-| HLSL tracer, D3D11 readback | green, eleven of eleven |
-| GLSL tracer | green, eleven of eleven natively on Linux GL, and through `tools/gldiff` |
+| HLSL tracer, D3D11 readback | green, twelve of twelve |
+| GLSL tracer | green, twelve of twelve natively on Linux GL, and through `tools/gldiff` |
 | GL readback (`glReadPixels`) | green -- it is what the native Linux `--diff` reads |
 | MSL tracer | type-checks under `tools/metalcheck`; no Metal device has seen it |
 | Metal readback | type-checks as Objective-C under `tools/metalcheck`; never built for a real SDK |
-| `build.sh` on Linux | builds and runs; tests and all eleven `--diff` green |
+| `build.sh` on Linux | builds and runs; tests and all twelve `--diff` green |
 | Windows binary under Wine | green 8/8, once Microsoft's `d3dcompiler_47.dll` sits beside the exe -- Wine's own HLSL compiler silently miscompiles the tracer |
 | `build.sh` on macOS | never executed |
 
@@ -306,7 +308,7 @@ testable, the discipline magnolia's `timestep.c` was extracted for.
 build.bat test
 ```
 
-**635 checks across 9 suites**, each test a standalone binary. They assert
+**671 checks across 9 suites**, each test a standalone binary. They assert
 physics, not pixels: Snell's angles into n=1.5 glass, the 41.81° critical
 angle, 4% reflectance at normal incidence, a vanishing p-component at
 Brewster's angle, Malus's law at five angles, the three-polarizer paradox to
@@ -315,7 +317,9 @@ paraboloid focusing every zone at R/2, an ellipsoid imaging focus onto focus,
 Littrow retroreflection, the conical invariant, a Fresnel ring's tilt solving
 the prism equation exactly and its outermost usable ring landing on that same
 41.81° -- and, through the tracer, a lens whose rings were cut for one focus
-reading sun times two Fresnel transmittances from it, to the last digit.
+reading sun times two Fresnel transmittances from it, to the last digit;
+and the white furnace, a white matte surface inside a uniform sky showing
+exactly the sky's radiance whichever way it faces.
 
 The one exception is `test_gpu_layout.c`, which asserts bookkeeping rather
 than optics: the GLSL tracer reads the scene by slot number out of one `vec4`
